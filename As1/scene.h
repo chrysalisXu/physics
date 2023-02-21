@@ -145,7 +145,10 @@ public:
     
     COM += timeStep * comVelocity;
 
-    // TODO: ROTATION
+    // ROTATION
+    Eigen::RowVector4d qAngV;
+    qAngV << 0, 0.5 * timeStep * angVelocity;
+    orientation += QMult(qAngV, orientation);
     
     for (int i=0;i<currV.rows();i++)
       currV.row(i)<<QRot(origV.row(i), orientation)+COM;
@@ -250,6 +253,7 @@ public:
     orientation=_orientation;
     comVelocity.setZero();
     angVelocity.setZero();
+    angVelocity << 1,1,1; // TEST ONLY
     
     RowVector3d naturalCOM;  //by the geometry of the object
     
