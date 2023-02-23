@@ -143,9 +143,9 @@ public:
     if (isFixed)
       return;  //a fixed object is immobile
     
-    COM += timeStep * comVelocity;
+    COM += timeStep* comVelocity;
 
-    // ROTATION
+    // Rotation
     Eigen::RowVector4d qAngV;
     qAngV << 0, 0.5 * timeStep * angVelocity;
     orientation += QMult(qAngV, orientation);
@@ -328,10 +328,17 @@ public:
       /***************
        TODO
        ***************/
+       m2.comVelocity = -m2.comVelocity;
+       m2.COM = m2.COM + depth * contactNormal;
+       contactPosition = penPosition;
     } else if (m2.isFixed){
       /***************
        TODO
        ***************/
+        m1.comVelocity = -m1.comVelocity;
+        m1.COM = m1.COM + depth * contactNormal;
+        contactPosition = penPosition;
+
     } else { //inverse mass weighting
       /***************
        TODO
