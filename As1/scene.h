@@ -23,6 +23,15 @@ void center(const void *_obj, ccd_vec3_t *dir);
 typedef std::pair<RowVector3d,RowVector3d> Impulse;
 
 
+// < 10 ^ 5 will be defined as zero
+double ZERO_PRECISION = 0.00001;
+void precisionCheckZero(Vector3d& target){
+  for (int i=0; i<3; i++)
+    if (abs(target(i,0)) <= ZERO_PRECISION) 
+      target(i,0) = 0;
+}
+
+
 //the class the contains each individual rigid objects and their functionality
 class Mesh{
 public:
@@ -127,12 +136,7 @@ public:
   //return the current inverted inertia tensor around the current COM. Update it by applying the orientation
   Matrix3d getCurrInvInertiaTensor(){
     Matrix3d R=Q2RotMatrix(orientation);
-    
-    /***************
-     TODO
-     ***************/
-    
-    return Matrix3d::Identity(3,3);  //change this to your result
+    return R * invIT * R.inverse();
   }
   
   
@@ -167,9 +171,12 @@ public:
     }
     
     //update linear and angular velocity according to all impulses
-    /***************
-     TODO
-     ***************/
+    for (int i=0; i<currImpulses.size(); i++){
+      Vector3d relativePos = currImpulses[i].first.transpose() - COM.transpose();
+      comVelocity += currImpulses[i].second.transpose() / totalMass;
+      angVelocity += getCurrInvInertiaTensor() * relativePos.cross(currImpulses[i].second.transpose());
+    }
+    currImpulses.clear();
   }
   
   RowVector3d initStaticProperties(const double density)
@@ -225,21 +232,69 @@ public:
   
   //Integrating the linear and angular velocities of the object
   //You need to modify this to integrate from acceleration in the field (basically gravity)
-  void updateVelocity(double timeStep){
+  void updateVelocity(double timeStep, float DragForceCoeff){
     
     if (isFixed)
       return;
-    
-    //integrating external forces (only gravity)
+
+    // integrating drag forces
+    if (T.rows()>1) 
+      dragByTet(DragForceCoeff);
+    else
+      simpleDrag(DragForceCoeff);
+
+    // integrating gravity
     Vector3d gravity; gravity<<0,-9.8,0.0;
     comVelocity += gravity*timeStep;
+  }
+
+  // simple drag implemention for object with only 1 tet
+  void simpleDrag(float DragForceCoeff){
+    comVelocity -= comVelocity * DragForceCoeff / totalMass;
+    angVelocity -= angVelocity * DragForceCoeff / totalMass;
+  }
+
+  // realistic drag implemention.
+  void dragByTet(float DragForceCoeff){
+    Vector3d forceCOM; forceCOM << 0,0,0;
+    Vector3d torch; torch << 0,0,0;
+    for (int i=0;i<T.rows();i++){
+      Vector3d relativePos = getTetCentroid(currV, i) - COM.transpose();
+      precisionCheckZero(relativePos);
+      double percent = tetVolumes(i) / totalVolume;
+      Vector3d force = -DragForceCoeff * percent * getPointSpeed(relativePos);
+      forceCOM += force;
+      torch += relativePos.cross(force);
+    }
+    precisionCheckZero(forceCOM);
+    comVelocity += forceCOM / totalMass;
+    angVelocity += getCurrInvInertiaTensor() * torch;
+  }
+
+  // get the central of the tet
+  Vector3d getTetCentroid(const MatrixXd& usedV, int i){
+    Vector3d e01=usedV.row(T(i,1))-usedV.row(T(i,0));
+    Vector3d e02=usedV.row(T(i,2))-usedV.row(T(i,0));
+    Vector3d e03=usedV.row(T(i,3))-usedV.row(T(i,0));
+    return (usedV.row(T(i,0))+usedV.row(T(i,1))+usedV.row(T(i,2))+usedV.row(T(i,3)))/4.0;
+  }
+
+  // get total speed for a point (user should ensure the point is inside the mesh)
+  Vector3d getPointSpeed(const Vector3d& relativePos){
+    Vector3d linearAngVelocity = comVelocity;
+    Matrix3d angToLinear;
+    angToLinear <<  0, -angVelocity(0,2), angVelocity(0,1), 
+                    angVelocity(0,2), 0 , -angVelocity(0,0),
+                    -angVelocity(0,1), angVelocity(0,0), 0;
+    linearAngVelocity += angToLinear * relativePos;
+    return linearAngVelocity;
   }
   
   
   //the full integration for the time step (velocity + position)
   //You need to modify this if you are changing the integration
-  void integrate(double timeStep){
-    updateVelocity(timeStep);
+  void integrate(double timeStep, float DragForceCoeff){
+    updateVelocity(timeStep, DragForceCoeff);
     updatePosition(timeStep);
   }
   
@@ -298,7 +353,8 @@ public:
   double currTime;
   int numFullV, numFullT;
   std::vector<Mesh> meshes;
-  
+  float DragForceCoeff;
+
   //adding an objects. You do not need to update this generally
   void addMesh(const MatrixXd& V, const MatrixXi& F, const MatrixXi& T, const double density, const bool isFixed, const RowVector3d& COM, const RowVector4d& orientation){
     
@@ -374,11 +430,11 @@ public:
    2. detecting and handling collisions with the coefficient of restitutation CRCoeff
    3. updating the visual scene in fullV and fullT
    *********************************************************************/
-  void updateScene(double timeStep, double CRCoeff){
-    
+  void updateScene(double timeStep, double CRCoeff, float dragForceCoeff){
+    DragForceCoeff = dragForceCoeff;
     //integrating velocity, position and orientation from forces and previous states
     for (int i=0;i<meshes.size();i++)
-      meshes[i].integrate(timeStep);
+      meshes[i].integrate(timeStep, DragForceCoeff);
     
     //detecting and handling collisions when found
     //This is done exhaustively: checking every two objects in the scene.
