@@ -430,7 +430,8 @@ public:
    2. detecting and handling collisions with the coefficient of restitutation CRCoeff
    3. updating the visual scene in fullV and fullT
    *********************************************************************/
-  void updateScene(double timeStep, double CRCoeff, float dragForceCoeff){
+  // void updateScene(double timeStep, double CRCoeff, float dragForceCoeff){
+  void updateScene(double timeStep, double CRCoeff, float dragForceCoeff, float friction) {
     DragForceCoeff = dragForceCoeff;
     //integrating velocity, position and orientation from forces and previous states
     for (int i=0;i<meshes.size();i++)
