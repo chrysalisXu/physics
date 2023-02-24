@@ -23,7 +23,7 @@ void center(const void *_obj, ccd_vec3_t *dir);
 typedef std::pair<RowVector3d,RowVector3d> Impulse;
 
 
-// < 10 ^ 5 will be defined as zero
+// < 10 ^ -5 will be defined as zero
 double ZERO_PRECISION = 0.00001;
 void precisionCheckZero(Vector3d& target){
   for (int i=0; i<3; i++)
@@ -38,7 +38,7 @@ public:
   MatrixXd origV;   //original vertex positions, where COM=(0.0,0.0,0.0) - never change this!
   MatrixXd currV;   //current vertex position
   MatrixXi F;   //faces of the tet mesh
-  MatrixXi T;   //Tets in the tet mesh
+  MatrixXi T;   //Tets in the tet (tetrahedra) mesh 
   
   VectorXi boundTets;  //indices (from T) of just the boundary tets, for collision
   
@@ -135,7 +135,7 @@ public:
   
   //return the current inverted inertia tensor around the current COM. Update it by applying the orientation
   Matrix3d getCurrInvInertiaTensor(){
-    Matrix3d R=Q2RotMatrix(orientation);
+    Matrix3d R=Q2RotMatrix(orientation); // R: Rotation Matrix
     return R * invIT * R.inverse();
   }
   
@@ -173,7 +173,7 @@ public:
     //update linear and angular velocity according to all impulses
     for (int i=0; i<currImpulses.size(); i++){
       Vector3d relativePos = currImpulses[i].first.transpose() - COM.transpose();
-      comVelocity += currImpulses[i].second.transpose() / totalMass;
+      comVelocity += currImpulses[i].second.transpose() / totalMass; // v(t + timeStep) = v(t) + I/m
       angVelocity += getCurrInvInertiaTensor() * relativePos.cross(currImpulses[i].second.transpose());
     }
     currImpulses.clear();
@@ -354,6 +354,7 @@ public:
   int numFullV, numFullT;
   std::vector<Mesh> meshes;
   float DragForceCoeff;
+  float friction;
 
   //adding an objects. You do not need to update this generally
   void addMesh(const MatrixXd& V, const MatrixXi& F, const MatrixXi& T, const double density, const bool isFixed, const RowVector3d& COM, const RowVector4d& orientation){
@@ -368,7 +369,7 @@ public:
    depth: the depth of penetration
    contactNormal: the normal of the conact measured m1->m2
    penPosition: a point on m2 such that if m2 <= m2 + depth*contactNormal, then penPosition+depth*contactNormal is the common contact point
-   CRCoeff: the coefficient of restitution
+   CRCoeff: the coefficient of restitution, which models elasticity
    *********************************************************************/
   void handleCollision(Mesh& m1, Mesh& m2,const double& depth, const RowVector3d& contactNormal,const RowVector3d& penPosition, const double CRCoeff){
     
@@ -378,8 +379,9 @@ public:
     //std::cout<<"handleCollision begin"<<std::endl;
     
     
-    //Interpretation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other. Remember to respect the direction of contactNormal and update penPosition accordingly.
-    RowVector3d contactPosition;
+    //Interpretation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other.
+    // Remember to respect the direction of contactNormal and update penPosition accordingly.
+    RowVector3d contactPosition; // point P
     if (m1.isFixed){
       /***************
        TODO
@@ -407,9 +409,11 @@ public:
      TODO
      ***************/
     
-    RowVector3d impulse=RowVector3d::Zero();  //change this to your result
+    // RowVector3d impulse=RowVector3d::Zero();  //change this to your result
+    RowVector3d impulse = contactNormal; // define impulse direction here
     
     std::cout<<"impulse: "<<impulse<<std::endl;
+    // push impulse to m1 and m2
     if (impulse.norm()>10e-6){
       m1.currImpulses.push_back(Impulse(contactPosition, -impulse));
       m2.currImpulses.push_back(Impulse(contactPosition, impulse));
@@ -431,8 +435,9 @@ public:
    3. updating the visual scene in fullV and fullT
    *********************************************************************/
   // void updateScene(double timeStep, double CRCoeff, float dragForceCoeff){
-  void updateScene(double timeStep, double CRCoeff, float dragForceCoeff, float friction) {
+  void updateScene(double timeStep, double CRCoeff, float dragForceCoeff, float fricTion) {
     DragForceCoeff = dragForceCoeff;
+    friction = fricTion;
     //integrating velocity, position and orientation from forces and previous states
     for (int i=0;i<meshes.size();i++)
       meshes[i].integrate(timeStep, DragForceCoeff);
