@@ -172,9 +172,10 @@ public:
     
     //update linear and angular velocity according to all impulses
     for (int i=0; i<currImpulses.size(); i++){
+      // should use formula on slide 21 of topic 3 to compute the new COM velocity
       Vector3d relativePos = currImpulses[i].first.transpose() - COM.transpose();
       comVelocity += currImpulses[i].second.transpose() / totalMass; // v(t + timeStep) = v(t) + I/m
-      angVelocity += getCurrInvInertiaTensor() * relativePos.cross(currImpulses[i].second.transpose());
+      angVelocity += getCurrInvInertiaTensor() * relativePos.cross(currImpulses[i].second.transpose()); // w = I^-1 * r x I
     }
     currImpulses.clear();
   }
@@ -257,18 +258,18 @@ public:
   // realistic drag implemention.
   void dragByTet(float DragForceCoeff){
     Vector3d forceCOM; forceCOM << 0,0,0;
-    Vector3d torch; torch << 0,0,0;
+    Vector3d torch; torch << 0,0,0; // torque?
     for (int i=0;i<T.rows();i++){
-      Vector3d relativePos = getTetCentroid(currV, i) - COM.transpose();
+      Vector3d relativePos = getTetCentroid(currV, i) - COM.transpose(); // what is relativePos ? between COM and force contact point?
       precisionCheckZero(relativePos);
       double percent = tetVolumes(i) / totalVolume;
       Vector3d force = -DragForceCoeff * percent * getPointSpeed(relativePos);
       forceCOM += force;
-      torch += relativePos.cross(force);
+      torch += relativePos.cross(force); // torque = relativePos x force
     }
     precisionCheckZero(forceCOM);
-    comVelocity += forceCOM / totalMass;
-    angVelocity += getCurrInvInertiaTensor() * torch;
+    comVelocity += forceCOM / totalMass; // v1 = v0 + F/m
+    angVelocity += getCurrInvInertiaTensor() * torch; // w1 = w0 + I^-1 * torque
   }
 
   // get the central of the tet
@@ -368,39 +369,122 @@ public:
    Input: RigidObjects m1, m2
    depth: the depth of penetration
    contactNormal: the normal of the conact measured m1->m2
-   penPosition: a point on m2 such that if m2 <= m2 + depth*contactNormal, then penPosition+depth*contactNormal is the common contact point
+   penPosition: penatration position. a point on m2 such that if m2 <= m2 + depth*contactNormal, then penPosition+depth*contactNormal is the common contact point.
    CRCoeff: the coefficient of restitution, which models elasticity
    *********************************************************************/
   void handleCollision(Mesh& m1, Mesh& m2,const double& depth, const RowVector3d& contactNormal,const RowVector3d& penPosition, const double CRCoeff){
     
-    
+
     std::cout<<"contactNormal: "<<contactNormal<<std::endl;
     std::cout<<"penPosition: "<<penPosition<<std::endl;
-    //std::cout<<"handleCollision begin"<<std::endl;
+    std::cout << "depth*contactNormal: " << depth * contactNormal << std::endl;
+
+    //std::cout << "depth * contactNormal: " << (depth * contactNormal) << std::endl;
+
+     std::cout<<"handleCollision begin"<<std::endl;
     
-    
-    //Interpretation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other.
+    //Interpenetation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other.
     // Remember to respect the direction of contactNormal and update penPosition accordingly.
     RowVector3d contactPosition; // point P
+    RowVector3d impulse;
     if (m1.isFixed){
       /***************
        TODO
        ***************/
-       m2.comVelocity = -m2.comVelocity;
-       m2.COM = m2.COM + depth * contactNormal;
-       contactPosition = penPosition;
+       // 接触点 和 速度方向
+        m2.COM = m2.COM + depth * contactNormal;// updated 2023.02.03
+        contactPosition = penPosition + depth * contactNormal; // updated 2023.02.03
+       // if no frition, rigid body
+        /* decompose initial Velocity as Vxand Vy, where Vx is long contactPlane,
+        * Vy is perpendicular to contactPlane(Vx in contactNormal direction).
+        * The after collision velocity Vx' = Vx , Vy' = - Vy (indicates opposite direction).
+        */ 
+        /* Steps:
+        * Step1: compute ΔV, then decompose ΔV into ΔVcom (which direction along r) and ΔVang (perpendicular to ΔVcom)
+        * Step2: use ΔVcom to compute Fcom
+        * Step3: use ΔVang to compute Fang
+        * Step4: F = Fcom + Fang (矢量和), to obtain the definition of Impulse = F/timeStep
+        */
+        // 考虑contactPosition 和 COM 之间的距离
+        // define r as relativePos here
+        
+
+
+        // m2的初速度是 m2.comVelocity, 分解为沿contactNormal方向的分速度Vy 和 沿contact平面的速度Vx
+        // use .norm() to compute the magnitude of a Eigen::Vector
+        // 定义contactNormal 的 单位方向向量 contactNormal_i
+        //RowVector3d: 1*3 vector, Vector3d: 3*1 vector
+        RowVector3d contactNormal_i = contactNormal / contactNormal.norm();
+        RowVector3d Vy = (m2.comVelocity) * contactNormal * contactNormal_i;
+        // 定义一个timeStep内 速度的变化量 ΔV
+        RowVector3d deltaVelocity = -2 * Vy;
+        // 定义从COM指向contactPosition的 collision arm: r = (point of contact) − (centre of rotation), 命名为relativePos_m2
+        RowVector3d relativePos_m2 = contactPosition - m2.COM;
+        // 定义 r (relativePos_m2) 的 单位方向向量 relativePos_m2_i
+        RowVector3d relativePos_m2_i = relativePos_m2 / relativePos_m2.norm();
+        // 将 ΔV 分解为沿着 r 的  ΔVcom 和 垂直于 r 的 ΔVang
+        RowVector3d deltaVelocityCOM = deltaVelocity * relativePos_m2 * relativePos_m2_i;
+        RowVector3d deltaVelocityAng = deltaVelocity - deltaVelocityCOM;
+
+        // 引入一个自定义的timeStep Δt, 在计算中无实际作用
+        double timeStep = 1.0; 
+        RowVector3d ForceCOM = deltaVelocityCOM * m2.totalMass / timeStep;
+        // [ΔVang] = [I^-1] * [relativePos] x [Fang], 已知其他三项, 求解[Fang]
+        // 定义一个暂存矩阵解矩阵方程
+        RowVector3d k = m2.getCurrInvInertiaTensor() * deltaVelocityAng.transpose();
+        RowVector3d temp = k.transpose(); // transpose to 1*3
+        RowVector3d ForceAng; 
+
+
+        RowVector3d ForceTotal = ForceCOM + ForceAng;
+        // Define impulse
+        impulse = ForceTotal * timeStep;
+       
     } else if (m2.isFixed){
       /***************
        TODO
        ***************/
-        m1.comVelocity = -m1.comVelocity;
         m1.COM = m1.COM + depth * contactNormal;
-        contactPosition = penPosition;
+        contactPosition = penPosition + depth * contactNormal;
+
+        // copy from m1.isFixed case, change m2 to m1
+        double timeStep = 1.0;
+        RowVector3d contactNormal_i = contactNormal / contactNormal.norm();
+        RowVector3d Vy = (m1.comVelocity) * contactNormal * contactNormal_i;
+        RowVector3d deltaVelocity = -2 * Vy;
+        RowVector3d relativePos_m1 = contactPosition - m1.COM;
+        RowVector3d relativePos_m1_i = relativePos_m1 / relativePos_m1.norm();
+        RowVector3d deltaVelocityCOM = deltaVelocity * relativePos_m1 * relativePos_m1_i;
+        RowVector3d deltaVelocityAng = deltaVelocity - deltaVelocityCOM;
+        
+        RowVector3d ForceCOM = deltaVelocityCOM * m1.totalMass / timeStep;
+        RowVector3d k = m1.getCurrInvInertiaTensor() * deltaVelocityAng.transpose();
+        RowVector3d temp = k.transpose(); // transpose to 1*3
+       
+        RowVector3d ForceAng; 
+        RowVector3d ForceTotal = ForceCOM + ForceAng;
+        // Define impulse
+        impulse = ForceTotal * timeStep;
+        
 
     } else { //inverse mass weighting
       /***************
        TODO
        ***************/
+        // for both moving objects 
+        double j = contactPosition.norm();
+        m1.comVelocity = m1.comVelocity + j * contactNormal / (m1.totalMass);
+        m2.comVelocity = m2.comVelocity - j * contactNormal / (m2.totalMass);
+
+        // collision arm: r = (point of contact) − (centre of rotation)
+        
+        // for rigid body, depth is not applicable
+        m1.COM = m1.COM + 0.5 * depth * contactNormal; // updated 2023.03.03
+        m2.COM = m2.COM + 0.5 * depth * contactNormal;
+        contactPosition = penPosition + 0.5 * depth * contactNormal;
+
+
+
     }
     
     
@@ -410,9 +494,12 @@ public:
      ***************/
     
     // RowVector3d impulse=RowVector3d::Zero();  //change this to your result
-    RowVector3d impulse = contactNormal; // define impulse direction here
+    // type was defined as a Rowvector3d pair: Impulse <position, direction>
+    // direction of an impulse: the direction of contact Normal if two objects velocity is in same/opposite direction
+    // RowVector3d impulse = contactNormal; // define impulse direction here
+    // Fixed: 冲量 = F*timeStep, F = Fang + Fcom
     
-    std::cout<<"impulse: "<<impulse<<std::endl;
+    
     // push impulse to m1 and m2
     if (impulse.norm()>10e-6){
       m1.currImpulses.push_back(Impulse(contactPosition, -impulse));
