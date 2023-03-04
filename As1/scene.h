@@ -471,20 +471,32 @@ public:
       /***************
        TODO
        ***************/
-        // for both moving objects 
-        double j = contactPosition.norm();
-        m1.comVelocity = m1.comVelocity + j * contactNormal / (m1.totalMass);
-        m2.comVelocity = m2.comVelocity - j * contactNormal / (m2.totalMass);
-
-        // collision arm: r = (point of contact) − (centre of rotation)
-        
-        // for rigid body, depth is not applicable
+       // collision arm: r = (point of contact) − (centre of rotation)
+       // for rigid body, depth is not applicable
         m1.COM = m1.COM + 0.5 * depth * contactNormal; // updated 2023.03.03
         m2.COM = m2.COM + 0.5 * depth * contactNormal;
-        contactPosition = penPosition + 0.5 * depth * contactNormal;
+        contactPosition = penPosition + 0.5 * depth * contactNormal; // updated 2023.03.03
+        // for both moving objects 
+        // 考虑沿着contactNormal方向的速度Vy
+        // m1, m2 分别定义contactPosition点的速度在contactNormal方向上的分量为 Vy_m1, Vy_m2
+        RowVector3d contactNormal_i = contactNormal / contactNormal.norm();
+        RowVector3d relativePos_m1 = contactPosition - m1.COM;
+        RowVector3d relativePos_m2 = contactPosition - m2.COM;
+        RowVector3d V_m1 = m1.getPointSpeed(relativePos_m1);
+        RowVector3d V_m2 = m2.getPointSpeed(relativePos_m2);
+        RowVector3d Vy_m1 = -(V_m1) * contactNormal * contactNormal_i;
+        RowVector3d Vy_m2 = (V_m2) * contactNormal * contactNormal_i;
+
+        // 定义两个参数 alpha1, alpha2
+        // 认为 impulse = alpha * ΔVy
+        double alpha1; // 暂时声明为double类型
+        double alpha2;
+
+        // 只需定义其中一个impulse, 在pushback中 impulse1 和 impulse2是相反的
+        RowVector3d impulse = (2.0 * alpha1 * alpha2) / (alpha1 + alpha2) * (Vy_m1 - Vy_m2);
 
 
-
+       
     }
     
     
