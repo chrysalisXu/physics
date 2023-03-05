@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <fstream>
+#include<sstream>
 #include <igl/bounding_box.h>
 #include <igl/readMESH.h>
 #include "ccd.h"
@@ -246,7 +247,7 @@ public:
   
   //Integrating the linear and angular velocities of the object
   //You need to modify this to integrate from acceleration in the field (basically gravity)
-  void updateVelocity(double timeStep, float DragForceCoeff){
+  void updateVelocity(double timeStep, float DragForceCoeff, RowVector3d& OverallAddonComSpeed, RowVector3d& OverallAddonAngSpeed){
     
     if (isFixed)
       return;
@@ -260,6 +261,8 @@ public:
     // integrating gravity
     Vector3d gravity; gravity<<0,-9.8,0.0;
     comVelocity += gravity*timeStep;
+    comVelocity += OverallAddonComSpeed;
+    angVelocity += OverallAddonAngSpeed;
   }
 
   // simple drag implemention for object with only 1 tet
@@ -311,11 +314,17 @@ public:
   
   //the full integration for the time step (velocity + position)
   //You need to modify this if you are changing the integration
-  void integrate(double timeStep, float DragForceCoeff){
-    updateVelocity(timeStep, DragForceCoeff);
+  void integrate(double timeStep, float DragForceCoeff, RowVector3d& OverallAddonComSpeed, RowVector3d& OverallAddonAngSpeed){
+    updateVelocity(timeStep, DragForceCoeff, OverallAddonComSpeed, OverallAddonAngSpeed);
     updatePosition(timeStep);
   }
   
+  void manualAddVelocity(const RowVector3d& AddonComSpeed, const RowVector3d& AddonAngSpeed){
+    if (isFixed)
+      return;
+    comVelocity += AddonComSpeed;
+    angVelocity += AddonAngSpeed;
+  }
   
   Mesh(const MatrixXd& _V, const MatrixXi& _F, const MatrixXi& _T, const double density, const bool _isFixed, const RowVector3d& _COM, const RowVector4d& _orientation){
     origV=_V;
@@ -375,9 +384,12 @@ public:
   float friction;
 
   //adding an objects. You do not need to update this generally
-  void addMesh(const MatrixXd& V, const MatrixXi& F, const MatrixXi& T, const double density, const bool isFixed, const RowVector3d& COM, const RowVector4d& orientation){
+  void addMesh( const MatrixXd& V, const MatrixXi& F, const MatrixXi& T, const double density, 
+                const bool isFixed, const RowVector3d& COM, const RowVector4d& orientation,
+                const RowVector3d& InitComVelocity, const RowVector3d& InitAngVelocity){
     
     Mesh m(V,F, T, density, isFixed, COM, orientation);
+    m.manualAddVelocity(InitComVelocity, InitAngVelocity);
     meshes.push_back(m);
   }
   
@@ -519,12 +531,14 @@ public:
    3. updating the visual scene in fullV and fullT
    *********************************************************************/
   // void updateScene(double timeStep, double CRCoeff, float dragForceCoeff){
-  void updateScene(double timeStep, double CRCoeff, float dragForceCoeff, float fricTion) {
+  void updateScene( double timeStep, double CRCoeff, float dragForceCoeff, float fricTion, 
+                    RowVector3d& OverallAddonComSpeed, RowVector3d& OverallAddonAngSpeed)
+{
     DragForceCoeff = dragForceCoeff;
     friction = fricTion;
     //integrating velocity, position and orientation from forces and previous states
     for (int i=0;i<meshes.size();i++)
-      meshes[i].integrate(timeStep, DragForceCoeff);
+      meshes[i].integrate(timeStep, DragForceCoeff, OverallAddonComSpeed, OverallAddonAngSpeed);
     
     //detecting and handling collisions when found
     //This is done exhaustively: checking every two objects in the scene.
@@ -536,6 +550,8 @@ public:
           handleCollision(meshes[i], meshes[j],depth, contactNormal, penPosition,CRCoeff);
     
     currTime+=timeStep;
+    OverallAddonComSpeed *= 0;
+    OverallAddonAngSpeed *= 0;
   }
   
   //loading a scene from the scene .txt files
@@ -547,9 +563,11 @@ public:
     if (!sceneFileHandle.is_open())
       return false;
     int numofObjects;
+    string line;
     
     currTime=0;
     sceneFileHandle>>numofObjects;
+    getline(sceneFileHandle, line);
     for (int i=0;i<numofObjects;i++){
       MatrixXi objT, objF;
       MatrixXd objV;
@@ -560,6 +578,21 @@ public:
       RowVector4d userOrientation;
       sceneFileHandle>>MESHFileName>>density>>youngModulus>>poissonRatio>>isFixed>>userCOM(0)>>userCOM(1)>>userCOM(2)>>userOrientation(0)>>userOrientation(1)>>userOrientation(2)>>userOrientation(3);
       userOrientation.normalize();
+
+      // read optional input, in an order of comv, coma
+      RowVector3d InitComVelocity;
+      RowVector3d InitAngVelocity;
+      getline(sceneFileHandle, line);
+      istringstream ss(line);
+      if (ss >> InitComVelocity[0])
+        ss >> InitComVelocity[1], InitComVelocity[2];
+      else
+        InitComVelocity *= 0;
+      if (ss >> InitAngVelocity[0])
+        ss >> InitAngVelocity[1], InitAngVelocity[2];
+      else
+        InitComVelocity *= 0;
+
       igl::readMESH(dataFolder+std::string("/")+MESHFileName,objV,objT, objF);
       
       //fixing weird orientation problem
@@ -567,7 +600,7 @@ public:
       tempF<<objF.col(2), objF.col(1), objF.col(0);
       objF=tempF;
       
-      addMesh(objV,objF, objT,density, isFixed, userCOM, userOrientation);
+      addMesh(objV,objF, objT,density, isFixed, userCOM, userOrientation, InitComVelocity, InitAngVelocity);
       cout << "COM: " << userCOM <<endl;
       cout << "orientation: " << userOrientation <<endl;
     }

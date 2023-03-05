@@ -17,6 +17,8 @@ float timeStep = 0.02;
 float CRCoeff= 1.0;
 float DragForceCoeff = 0.0;
 float friction = 0.0;
+Eigen::RowVector3d OverallAddonComSpeed(0,0,0);
+Eigen::RowVector3d OverallAddonAngSpeed(0,0,0);
 
 Scene scene;
 
@@ -99,7 +101,7 @@ bool key_down(igl::opengl::glfw::Viewer &viewer, unsigned char key, int modifier
   {
     if (!viewer.core().is_animating){
       // scene.updateScene(timeStep, CRCoeff, DragForceCoeff); 
-      scene.updateScene(timeStep, CRCoeff, DragForceCoeff, friction);
+      scene.updateScene(timeStep, CRCoeff, DragForceCoeff, friction, OverallAddonComSpeed, OverallAddonAngSpeed);
       currTime+=timeStep;
       updateMeshes(viewer);
       std::cout <<"currTime: "<<currTime<<std::endl;
@@ -120,7 +122,7 @@ bool pre_draw(igl::opengl::glfw::Viewer &viewer)
   if (viewer.core().is_animating){
     if (!animationHack)
       //scene.updateScene(timeStep, CRCoeff, DragForceCoeff);
-      scene.updateScene(timeStep, CRCoeff, DragForceCoeff, friction);
+      scene.updateScene(timeStep, CRCoeff, DragForceCoeff, friction, OverallAddonComSpeed, OverallAddonAngSpeed);
     else
       viewer.core().is_animating=false;
     animationHack=false;
@@ -148,7 +150,17 @@ class CustomMenu : public igl::opengl::glfw::imgui::ImGuiMenu
         mgpViewer.core().animation_max_fps = (((int)1.0/timeStep));
       }
       ImGui::InputFloat("Drag Force Coeff", &DragForceCoeff, 0, 0, "%.2f");
-      ImGui::InputFloat("Friction", &friction, 0, 0, "%.2f");
+      // ImGui::InputFloat("Friction", &friction, 0, 0, "%.2f");
+    }
+    // Add new group
+    if (ImGui::CollapsingHeader("AddonSpeed", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+      ImGui::InputDouble("Com Velocity X", &OverallAddonComSpeed[0], 0, 0, "%.2f");
+      ImGui::InputDouble("Com Velocity Y", &OverallAddonComSpeed[1], 0, 0, "%.2f");
+      ImGui::InputDouble("Com Velocity Z", &OverallAddonComSpeed[2], 0, 0, "%.2f");
+      ImGui::InputDouble("Ang Velocity X", &OverallAddonAngSpeed[0], 0, 0, "%.2f");
+      ImGui::InputDouble("Ang Velocity Y", &OverallAddonAngSpeed[1], 0, 0, "%.2f");
+      ImGui::InputDouble("Ang Velocity Z", &OverallAddonAngSpeed[2], 0, 0, "%.2f");
     }
   }
 };
@@ -169,13 +181,13 @@ int main(int argc, char *argv[])
   cout<<"scene file: "<<std::string(argv[2])<<endl;
   //create platform
   createPlatform();
-  scene.addMesh(platV, platF, platT, 10000.0, true, platCOM, platOrientation);
+  scene.addMesh(platV, platF, platT, 10000.0, true, platCOM, platOrientation, OverallAddonComSpeed, OverallAddonAngSpeed);
   
   //load scene from file
   scene.loadScene(std::string(argv[1]),std::string(argv[2]));
 
   // scene.updateScene(0.0, CRCoeff, DragForceCoeff);
-  scene.updateScene(0.0, CRCoeff, DragForceCoeff, friction);
+  scene.updateScene(0.0, CRCoeff, DragForceCoeff, friction, OverallAddonComSpeed, OverallAddonAngSpeed);
   
   // Viewer Settings
   for (int i=0;i<scene.meshes.size();i++){
