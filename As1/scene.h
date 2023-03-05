@@ -181,15 +181,10 @@ public:
     
     //update linear and angular velocity according to all impulses
     for (int i=0; i<currImpulses.size(); i++){
-      cout<<"impulse " << currImpulses[i].second<<endl;
       // should use formula on slide 21 of topic 3 to compute the new COM velocity
       Vector3d relativePos = currImpulses[i].first.transpose() - COM.transpose();
-      cout<<"comVelocity " << comVelocity<<endl;
       comVelocity += currImpulses[i].second.transpose() / totalMass; // v(t + timeStep) = v(t) + I/m
-      cout<<"comVelocity " << comVelocity<<endl;
-      cout<<"angVelocity " << angVelocity<<endl;
       angVelocity += getCurrInvInertiaTensor() * relativePos.cross(currImpulses[i].second.transpose()); // w = I^-1 * r x I
-      cout<<"angVelocity " << angVelocity<<endl;
     }
     currImpulses.clear();
   }
@@ -290,9 +285,6 @@ public:
 
   // get the central of the tet
   Vector3d getTetCentroid(const MatrixXd& usedV, int i){
-    Vector3d e01=usedV.row(T(i,1))-usedV.row(T(i,0));
-    Vector3d e02=usedV.row(T(i,2))-usedV.row(T(i,0));
-    Vector3d e03=usedV.row(T(i,3))-usedV.row(T(i,0));
     return (usedV.row(T(i,0))+usedV.row(T(i,1))+usedV.row(T(i,2))+usedV.row(T(i,3)))/4.0;
   }
 
@@ -401,14 +393,10 @@ public:
   RowVector3d calculateImpulseWithoutPosition(const RowVector3d& contactNormal, const RowVector3d& contactPosition, Mesh& m, const RowVector3d& velocityChange){
     // https://en.wikipedia.org/wiki/Collision_response
     RowVector3d relativePos = contactPosition - m.COM;
-    cout<<"relativePos" << relativePos <<endl;
-    cout<<"m.totalMass" << m.totalMass <<endl;
-    cout<<"velocityChange" << velocityChange <<endl;
     double norm = velocityChange.norm() / (
       (m.getCurrInvInertiaTensor() * (relativePos.cross(contactNormal).transpose())).cross(relativePos).dot(contactNormal)
       + (1 / m.totalMass)
     );
-    cout<<"norm" << norm <<endl;
     return norm * contactNormal;
   }
 
@@ -431,13 +419,18 @@ public:
 
      std::cout<<"handleCollision begin"<<std::endl;
     
+    if (depth <= ZERO_PRECISION)
+    {
+      std::cout<<"handleCollision depth precision aborted"<<std::endl;
+      return;
+    }
+    
     // Interpenetation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other.
     // Remember to respect the direction of contactNormal and update penPosition accordingly.
     RowVector3d contactPosition; // point P
     // 定义contactNormal 的 单位方向向量 contactNormal_i
     RowVector3d contactNormal_i = contactNormal / contactNormal.norm();
     if (m1.isFixed){
-      cout<<"point speed " << m2.getPointSpeedRow((penPosition - m2.COM)) <<endl;
       // m2的初速度是 m2.comVelocity, 分解为沿contactNormal方向的分速度Vy 和 沿contact平面的速度Vx
       Vector3d Vy = (m2.getPointSpeedRow((penPosition - m2.COM)).dot(contactNormal_i)) * contactNormal_i;
       if (Vy.dot(contactNormal_i) > 0){
@@ -454,7 +447,6 @@ public:
         calculateImpulseWithoutPosition(contactNormal_i, contactPosition, m2, deltaVelocity)
       ));
     } else if (m2.isFixed){
-      cout<<"point speed " << m1.getPointSpeedRow((penPosition - m1.COM)) <<endl;
       Vector3d Vy = (m1.getPointSpeedRow((penPosition - m1.COM)).dot(contactNormal_i)) * contactNormal_i;
       if (Vy.dot(contactNormal_i)> 0){
         contactNormal_i = -1 * contactNormal_i;
@@ -587,11 +579,11 @@ public:
       if (ss >> InitComVelocity[0])
         ss >> InitComVelocity[1], InitComVelocity[2];
       else
-        InitComVelocity *= 0;
+        InitComVelocity.setZero();
       if (ss >> InitAngVelocity[0])
         ss >> InitAngVelocity[1], InitAngVelocity[2];
       else
-        InitComVelocity *= 0;
+        InitAngVelocity.setZero();
 
       igl::readMESH(dataFolder+std::string("/")+MESHFileName,objV,objT, objF);
       
