@@ -437,9 +437,10 @@ public:
         contactNormal_i = -1 * contactNormal_i;
       }
       // contact point and velocity changes
-      m2.COM = m2.COM + depth * contactNormal_i;
-      m2.updatePositionByCom();
-      contactPosition = penPosition + depth * contactNormal_i;
+      m1.COM = m1.COM - m2.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal; // inverse mass weighting 
+      m2.COM = m2.COM + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
+      // the amount of displacement should depend on the mass of the object being moved (it shouldn't always be 50% of the total displacement)
+      contactPosition = penPosition + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
       // ΔV in one timestep
       RowVector3d deltaVelocity = -2 * Vy;
       m2.currImpulses.push_back(Impulse(
