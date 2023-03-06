@@ -449,10 +449,14 @@ public:
     // define scalar j together for all cases
     // j_up: numerator, j_down: denominator
     double j_up = -2 * (velocity_m1 - velocity_m2).dot(contactNormal_i);
-    double j_down = 1 / m1.totalMass + 1 / m2.totalMass +
-        relativePos_m1.cross(contactNormal_i) * m1.getCurrInvInertiaTensor() * relativePos_m1.cross(contactNormal_i).transpose()
-        + relativePos_m2.cross(contactNormal_i) * m2.getCurrInvInertiaTensor() * relativePos_m2.cross(contactNormal_i).transpose();
-        
+    double j_down = 0;
+    if (!m1.isFixed){
+      j_down += 1 / m1.totalMass + relativePos_m1.cross(contactNormal_i)
+                * m1.getCurrInvInertiaTensor() * relativePos_m1.cross(contactNormal_i).transpose();
+    }if (!m2.isFixed){
+      j_down += 1 / m2.totalMass + relativePos_m2.cross(contactNormal_i)
+                * m2.getCurrInvInertiaTensor() * relativePos_m2.cross(contactNormal_i).transpose();
+    }
     double j = j_up / j_down;
     impulse = - j * contactNormal_i;
 
