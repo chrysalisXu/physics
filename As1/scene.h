@@ -384,21 +384,6 @@ public:
     m.manualAddVelocity(InitComVelocity, InitAngVelocity);
     meshes.push_back(m);
   }
-  
-
-  // calculate impulse
-  // requirement: 
-  //  contactNormal must be unit vector
-  //  contactNormal * velocityChange = contactNormal.norm() * velocityChange.norm()
-  RowVector3d calculateImpulseWithoutPosition(const RowVector3d& contactNormal, const RowVector3d& contactPosition, Mesh& m, const RowVector3d& velocityChange){
-    // https://en.wikipedia.org/wiki/Collision_response
-    RowVector3d relativePos = contactPosition - m.COM;
-    double norm = velocityChange.norm() / (
-      (m.getCurrInvInertiaTensor() * (relativePos.cross(contactNormal).transpose())).cross(relativePos).dot(contactNormal)
-      + (1 / m.totalMass)
-    );
-    return norm * contactNormal;
-  }
 
   /*********************************************************************
    This function handles a collision between objects ro1 and ro2 when found, by assigning impulses to both objects.
@@ -413,7 +398,6 @@ public:
 
     std::cout<< "contactNormal: " <<contactNormal<<std::endl;
     std::cout<< "penPosition: " <<penPosition<<std::endl;
-    std::cout << "depth*contactNormal: " << depth * contactNormal << std::endl;
 
     // std::cout << "depth * contactNormal: " << (depth * contactNormal) << std::endl;
 
@@ -428,88 +412,57 @@ public:
     // Interpenetation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other.
     // Remember to respect the direction of contactNormal and update penPosition accordingly.
     RowVector3d contactPosition; // point P
-    // 定义contactNormal 的 单位方向向量 contactNormal_i
+    RowVector3d impulse;
     RowVector3d contactNormal_i = contactNormal / contactNormal.norm();
     if (m1.isFixed){
-      // m2的初速度是 m2.comVelocity, 分解为沿contactNormal方向的分速度Vy 和 沿contact平面的速度Vx
-      Vector3d Vy = (m2.getPointSpeedRow((penPosition - m2.COM)).dot(contactNormal_i)) * contactNormal_i;
-      if (Vy.dot(contactNormal_i) > 0){
-        contactNormal_i = -1 * contactNormal_i;
-      }
-      m2.COM = m2.COM + depth * contactNormal_i;
-      m2.updatePositionByCom();
-      // ΔV in one timestep
-      RowVector3d deltaVelocity = -2 * Vy;
-      m2.currImpulses.push_back(Impulse(
-        contactPosition,
-        calculateImpulseWithoutPosition(contactNormal_i, contactPosition, m2, deltaVelocity)
-      ));
+        m2.COM = m2.COM + depth * contactNormal_i;
+        for (int i = 0; i < m2.currV.rows(); i++)
+            m2.currV.row(i) << QRot(m2.origV.row(i), m2.orientation) + m2.COM;
+        contactPosition = penPosition + depth * contactNormal_i; 
+
     } else if (m2.isFixed){
-      Vector3d Vy = (m1.getPointSpeedRow((penPosition - m1.COM)).dot(contactNormal_i)) * contactNormal_i;
-      if (Vy.dot(contactNormal_i)> 0){
-        contactNormal_i = -1 * contactNormal_i;
-      }
-      m1.COM = m1.COM + depth * contactNormal_i;
-      m1.updatePositionByCom();
-      contactPosition = penPosition + depth * contactNormal_i;
-      RowVector3d deltaVelocity = -2 * Vy;
-      m1.currImpulses.push_back(Impulse(
-        contactPosition,
-        calculateImpulseWithoutPosition(contactNormal_i, contactPosition, m1, deltaVelocity)
-      ));
+        m1.COM = m1.COM + depth * contactNormal_i;
+        for (int i = 0; i < m1.currV.rows(); i++)
+            m1.currV.row(i) << QRot(m1.origV.row(i), m1.orientation) + m1.COM;
+        contactPosition = penPosition + depth * contactNormal_i;    
+
     } else {
-      // contactNormal_i for m1, -contactNormal_i for m2
-      Vector3d Vm1y = (m1.getPointSpeedRow((penPosition - m1.COM)).dot(contactNormal_i)) * contactNormal_i;
-      Vector3d Vm2y = (m1.getPointSpeedRow((penPosition - m2.COM)).dot(contactNormal_i)) * contactNormal_i;
-      if (Vm1y.dot(contactNormal_i)> 0){
-        contactNormal_i = -1 * contactNormal_i;
-      }
-      // contact point and velocity changes
-      m1.COM = m1.COM - m2.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal; // inverse mass weighting 
-      m2.COM = m2.COM + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
-      // the amount of displacement should depend on the mass of the object being moved (it shouldn't always be 50% of the total displacement)
-      contactPosition = penPosition + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
-      //m1.COM = m1.COM + depth * contactNormal_i / 2;
-      m1.updatePositionByCom();
-      //m2.COM = m2.COM - depth * contactNormal_i / 2;
-      m2.updatePositionByCom();
-      //contactPosition = penPosition + depth * contactNormal_i / 2;
-      double k1 = calculateImpulseWithoutPosition(contactNormal_i, contactPosition, m1, contactNormal_i).norm();
-      double k2 = calculateImpulseWithoutPosition(contactNormal_i, contactPosition, m2, -contactNormal_i).norm();
-      RowVector3d m1DeltaVelocity = 2 * (Vm2y - Vm1y) / (1 + k2/k2);
-      m1.currImpulses.push_back(Impulse(
-        contactPosition,
-        m1DeltaVelocity.norm() * k1 * contactNormal_i
-      ));
-      m2.currImpulses.push_back(Impulse(
-        contactPosition,
-        - (m1DeltaVelocity.norm() * k1 * contactNormal_i)
-      ));
+        m1.COM = m1.COM - m2.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal_i; // inverse mass weighting 
+        m2.COM = m2.COM + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal_i;
+        for (int i = 0; i < m1.currV.rows(); i++)
+            m1.currV.row(i) << QRot(m1.origV.row(i), m1.orientation) + m1.COM;
+        for (int i = 0; i < m2.currV.rows(); i++)
+            m2.currV.row(i) << QRot(m2.origV.row(i), m2.orientation) + m2.COM;
+        // the amount of displacement should depend on the mass of the object being moved (it shouldn't always be 50% of the total displacement)
+        // contactPosition = penPosition with an offset of m2 displacement
+        contactPosition = penPosition + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal_i;
+
     }
-    
-    
-    //Create impulse and push them into m1.impulses and m2.impulses.
-    /***************
-     TODO
-     ***************/
-    
-    // RowVector3d impulse=RowVector3d::Zero();  //change this to your result
-    // type was defined as a Rowvector3d pair: Impulse <position, direction>
-    // direction of an impulse: the direction of contact Normal if two objects velocity is in same/opposite direction
-    // RowVector3d impulse = contactNormal; // define impulse direction here
-    // Fixed: 冲量 = F*timeStep, F = Fang + Fcom
-    
-    
+    std::cout << "contactPosition: " << contactPosition << std::endl;
+    // rotation arm: relativePos for m1 and m2 
+    RowVector3d relativePos_m1 = contactPosition - m1.COM;
+    RowVector3d relativePos_m2 = contactPosition - m2.COM;
+    // closing velocity of m1 and m2
+    RowVector3d velocity_m1 = m1.comVelocity + m1.angVelocity.cross(relativePos_m1);
+    RowVector3d velocity_m2 = m2.comVelocity + m2.angVelocity.cross(relativePos_m2);
+
+    // define scalar j together for all cases
+    // j_up: numerator, j_down: denominator
+    double j_up = -2 * (velocity_m1 - velocity_m2).dot(contactNormal_i);
+    double j_down = 1 / m1.totalMass + 1 / m2.totalMass +
+        relativePos_m1.cross(contactNormal_i) * m1.getCurrInvInertiaTensor() * relativePos_m1.cross(contactNormal_i).transpose()
+        + relativePos_m2.cross(contactNormal_i) * m2.getCurrInvInertiaTensor() * relativePos_m2.cross(contactNormal_i).transpose();
+        
+    double j = j_up / j_down;
+    impulse = - j * contactNormal_i;
+
+
     // push impulse to m1 and m2
-    /*
     if (impulse.norm()>10e-6){
       m1.currImpulses.push_back(Impulse(contactPosition, -impulse));
       m2.currImpulses.push_back(Impulse(contactPosition, impulse));
     }
-    */
-    
-    
-    //std::cout<<"handleCollision end"<<std::endl;
+ 
     
     //updating velocities according to impulses
     m1.updateImpulseVelocities();
