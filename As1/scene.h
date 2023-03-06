@@ -436,11 +436,8 @@ public:
       if (Vy.dot(contactNormal_i) > 0){
         contactNormal_i = -1 * contactNormal_i;
       }
-      // contact point and velocity changes
-      m1.COM = m1.COM - m2.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal; // inverse mass weighting 
-      m2.COM = m2.COM + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
-      // the amount of displacement should depend on the mass of the object being moved (it shouldn't always be 50% of the total displacement)
-      contactPosition = penPosition + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
+      m2.COM = m2.COM + depth * contactNormal_i;
+      m2.updatePositionByCom();
       // ΔV in one timestep
       RowVector3d deltaVelocity = -2 * Vy;
       m2.currImpulses.push_back(Impulse(
@@ -467,11 +464,16 @@ public:
       if (Vm1y.dot(contactNormal_i)> 0){
         contactNormal_i = -1 * contactNormal_i;
       }
-      m1.COM = m1.COM + depth * contactNormal_i / 2;
+      // contact point and velocity changes
+      m1.COM = m1.COM - m2.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal; // inverse mass weighting 
+      m2.COM = m2.COM + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
+      // the amount of displacement should depend on the mass of the object being moved (it shouldn't always be 50% of the total displacement)
+      contactPosition = penPosition + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
+      //m1.COM = m1.COM + depth * contactNormal_i / 2;
       m1.updatePositionByCom();
-      m2.COM = m2.COM - depth * contactNormal_i / 2;
+      //m2.COM = m2.COM - depth * contactNormal_i / 2;
       m2.updatePositionByCom();
-      contactPosition = penPosition + depth * contactNormal_i / 2;
+      //contactPosition = penPosition + depth * contactNormal_i / 2;
       double k1 = calculateImpulseWithoutPosition(contactNormal_i, contactPosition, m1, contactNormal_i).norm();
       double k2 = calculateImpulseWithoutPosition(contactNormal_i, contactPosition, m2, -contactNormal_i).norm();
       RowVector3d m1DeltaVelocity = 2 * (Vm2y - Vm1y) / (1 + k2/k2);
