@@ -14,8 +14,8 @@ public:
   int m1, m2;                     //Two participating meshes (can be the same)  - auxiliary data for users (constraint class shouldn't use that)
   int v1, v2;                     //Two vertices from the respective meshes - auxiliary data for users (constraint class shouldn't use that)
   double invMass1, invMass2;       //inverse masses of two bodies
-  double refValue;                //Reference values to use in the constraint, when needed (like distance)
-  RowVector3d refVector;             //Reference vector when needed (like vector)
+  double refValue;                //Reference values to use in the constraint, when needed (like distance), d12
+  RowVector3d refVector;             //Reference vector when needed (like vector) , n hat
   double CRCoeff;                 //extra velocity bias
   ConstraintType constraintType;  //The type of the constraint, and will affect the value and the gradient. This SHOULD NOT change after initialization!
   ConstraintEqualityType constraintEqualityType;  //whether the constraint is an equality or an inequality
@@ -35,7 +35,7 @@ public:
   bool resolveVelocityConstraint(const MatrixXd& currCOMPositions, const MatrixXd& currVertexPositions, const MatrixXd& currCOMVelocities, const MatrixXd& currAngularVelocities, const Matrix3d& invInertiaTensor1, const Matrix3d& invInertiaTensor2, MatrixXd& correctedCOMVelocities, MatrixXd& correctedAngularVelocities, double tolerance){
     
     MatrixXd invMassMatrix=MatrixXd::Zero(12,12);
-    RowVectorXd constGradient(12);
+    RowVectorXd constGradient(12); // constraint Gradient is Jacobian 1*12
     
     
     /**************
@@ -46,11 +46,43 @@ public:
      
      Note to differentiate between different constraint types; for inequality constraints you don't do anything unless it's unsatisfied.
      ***************/
+    Matrix3d IdentityMat3d = Matrix3d::Identity(); // 3*3 identity matrix
+    invMassMatrix = (invMass1 * IdentityMat3d, invInertiaTensor1, invMass2 * IdentityMat3d, invInertiaTensor2);
+    double Constraint_x1_x2 = (currCOMPositions.row(0) - currCOMPositions.row(1)).norm() - refValue;
+    RowVectorXd velocity_Vector(12); // 1*12
+    velocity_Vector = (currCOMVelocities.row(0), currAngularVelocities.row(0), currCOMVelocities.row(1), currAngularVelocities.row(1));
+    RowVector3d n_hat = currCOMPositions.row(0) - currCOMPositions.row(1);
+    RowVector3d rA = currCOMPositions.row(0) - currVertexPositions.row(0);
+    RowVector3d rB = currCOMPositions.row(1) - currVertexPositions.row(1);
+    constGradient = (n_hat, rA.cross(n_hat), -n_hat, rB.cross(n_hat)); // 1*12
+    // define lamda: Lagrange multiplier, lamda_up: numerator, lamda_down: denominator
+    double lamda_up = constGradient.transpose().dot(velocity_Vector); // 1*12 .dot 1*12
+    double lamda_down = constGradient * invMassMatrix * constGradient.transpose(); // 1*12 * 12*12 * 12*1
+    double lamda = -lamda_up / lamda_down;
+    RowVectorXd delta_Velocity(12);
+    delta_Velocity = -lamda * invMassMatrix * constGradient.transpose(); //12*12 * 12*1
+
+    // RowVector3d impulse = constGradient.transpose() * lamda;
+
+    // need to determine Δv such that Ji · (v + Δv) = 0
+    //if (constGradient.dot(velocity_Vector + delta_Velocity) == 0) {
+    if (abs(constGradient.dot(velocity_Vector)) <= tolerance) {
+        correctedCOMVelocities=currCOMVelocities;
+        correctedAngularVelocities=currAngularVelocities;
+        return true;
+    }
+    else {
+        RowVectorXd correctedVelocity_Vector = velocity_Vector + delta_Velocity;
+        correctedCOMVelocities = correctedVelocity_Vector.segment(0,3) + correctedVelocity_Vector.segment(6,9);
+        correctedAngularVelocities = correctedVelocity_Vector.segment(3, 6) + correctedVelocity_Vector.segment(9, 12);
+        return false;
+    };
     
+
      //Stub code: remove upon implementation
-     correctedCOMVelocities=currCOMVelocities;
-     correctedAngularVelocities=currAngularVelocities;
-     return true;
+     //correctedCOMVelocities=currCOMVelocities;
+     //correctedAngularVelocities=currAngularVelocities;
+     //return true;
      //end of stub code
   }
   

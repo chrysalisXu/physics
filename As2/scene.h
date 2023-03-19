@@ -415,7 +415,46 @@ public:
      TODO: practical 2
      update m(1,2) comVelocity, angVelocity and COM variables by using a Constraint class of type COLLISION
      ***********************/
+    RowVector3d contactPosition;
+    contactPosition = penPosition + depth * contactNormal;
+    // contactNormal should be already normalized
+    m1.COM = m1.COM - m2.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal; // inverse mass weighting 
+    m2.COM = m2.COM + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
+    for (int i = 0; i < m1.currV.rows(); i++)
+        m1.currV.row(i) << QRot(m1.origV.row(i), m1.orientation) + m1.COM;
+    for (int i = 0; i < m2.currV.rows(); i++)
+        m2.currV.row(i) << QRot(m2.origV.row(i), m2.orientation) + m2.COM;
+    contactPosition = penPosition + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
+        
+    // Collision velocity resolution as constraint resolution
     
+    // inequality constraints: collision & penetration
+    // refValue: d12 = 0
+    double d1_2 = 0;
+    // equality constraints: rigid rods
+    // refValue: d12 = length of rod
+    // double refValue = ;
+    RowVector3d r1_r2 = m1.COM - m2.COM;
+    // Declare a Constraint class variable: constraint
+
+    int currConstIndex = 0;
+    Constraint collisionConstraint = constraints[currConstIndex];
+    
+    RowVector3d currConstPos1 = contactPosition - m1.COM;
+    RowVector3d currConstPos2 = contactPosition - m2.COM;
+    MatrixXd currCOMPositions(2, 3); currCOMPositions << meshes[collisionConstraint.m1].COM, meshes[collisionConstraint.m2].COM;
+    MatrixXd currConstPositions(2, 3); currConstPositions << currConstPos1, currConstPos2; // currVertexPositions
+    MatrixXd currCOMVelocities(2, 3); currCOMVelocities << meshes[collisionConstraint.m1].comVelocity, meshes[collisionConstraint.m2].comVelocity;
+    MatrixXd currAngVelocities(2, 3); currAngVelocities << meshes[collisionConstraint.m1].angVelocity, meshes[collisionConstraint.m2].angVelocity;
+    MatrixXd correctedCOMVelocities, correctedAngVelocities, correctedCOMPositions;
+    Matrix3d invInertiaTensor1 = meshes[collisionConstraint.m1].getCurrInvInertiaTensor();
+    Matrix3d invInertiaTensor2 = meshes[collisionConstraint.m2].getCurrInvInertiaTensor();
+    bool velocityWasValid = collisionConstraint.resolveVelocityConstraint(currCOMPositions, currConstPositions, currCOMVelocities, currAngVelocities, invInertiaTensor1, invInertiaTensor2, correctedCOMVelocities, correctedAngVelocities, tolerance);
+    MatrixXd correctedCOMPositions;
+    bool positionWasValid = collisionConstraint.resolvePositionConstraint(currCOMPositions, currConstPositions, correctedCOMPositions, tolerance);
+
+
+
   }
   
   /*********************************************************************
