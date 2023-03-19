@@ -450,7 +450,6 @@ public:
     Matrix3d invInertiaTensor1 = meshes[collisionConstraint.m1].getCurrInvInertiaTensor();
     Matrix3d invInertiaTensor2 = meshes[collisionConstraint.m2].getCurrInvInertiaTensor();
     bool velocityWasValid = collisionConstraint.resolveVelocityConstraint(currCOMPositions, currConstPositions, currCOMVelocities, currAngVelocities, invInertiaTensor1, invInertiaTensor2, correctedCOMVelocities, correctedAngVelocities, tolerance);
-    MatrixXd correctedCOMPositions;
     bool positionWasValid = collisionConstraint.resolvePositionConstraint(currCOMPositions, currConstPositions, correctedCOMPositions, tolerance);
 
 
@@ -512,7 +511,7 @@ public:
       
       Matrix3d invInertiaTensor1=meshes[currConstraint.m1].getCurrInvInertiaTensor();
       Matrix3d invInertiaTensor2=meshes[currConstraint.m2].getCurrInvInertiaTensor();
-      MatrixXd correctedCOMVelocities, correctedAngVelocities, correctedCOMPositions;
+      MatrixXd correctedCOMVelocities(2,3), correctedAngVelocities(2,3), correctedCOMPositions(2,3);
       
       bool velocityWasValid=currConstraint.resolveVelocityConstraint(currCOMPositions, currConstPositions, currCOMVelocities, currAngVelocities, invInertiaTensor1, invInertiaTensor2, correctedCOMVelocities,correctedAngVelocities, tolerance);
       
@@ -554,7 +553,7 @@ public:
       MatrixXd currCOMPositions(2,3); currCOMPositions<<meshes[currConstraint.m1].COM, meshes[currConstraint.m2].COM;
       MatrixXd currConstPositions(2,3); currConstPositions<<currConstPos1, currConstPos2;
     
-      MatrixXd correctedCOMPositions;
+      MatrixXd correctedCOMPositions(2,3);
     
       bool positionWasValid=currConstraint.resolvePositionConstraint(currCOMPositions, currConstPositions,correctedCOMPositions, tolerance);
       

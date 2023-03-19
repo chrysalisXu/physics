@@ -49,9 +49,9 @@ public:
     Matrix3d IdentityMat3d = Matrix3d::Identity(); // 3*3 identity matrix
     //invMassMatrix = (invMass1 * IdentityMat3d, invInertiaTensor1, invMass2 * IdentityMat3d, invInertiaTensor2);
     invMassMatrix.block(0, 0, 3, 3) = invMass1 * IdentityMat3d;
-    invMassMatrix.block(3, 3, 6, 6) = invInertiaTensor1;
-    invMassMatrix.block(6, 6, 9, 9) = invMass2 * IdentityMat3d;
-    invMassMatrix.block(9, 9, 12, 12) = invInertiaTensor2;
+    invMassMatrix.block(3, 3, 3, 3) = invInertiaTensor1;
+    invMassMatrix.block(6, 6, 3, 3) = invMass2 * IdentityMat3d;
+    invMassMatrix.block(9, 9, 3, 3) = invInertiaTensor2;
     double Constraint_x1_x2 = (currCOMPositions.row(0) - currCOMPositions.row(1)).norm() - refValue;
     RowVectorXd velocity_Vector(12); // 1*12
     velocity_Vector = (currCOMVelocities.row(0), currAngularVelocities.row(0), currCOMVelocities.row(1), currAngularVelocities.row(1));
@@ -104,7 +104,7 @@ public:
     // So J is also a 1*6 vector
     Matrix3d IdentityMat3d = Matrix3d::Identity(); // 3*3 identity matrix
     invMassMatrix.block(0, 0, 3, 3) = invMass1 * IdentityMat3d;
-    invMassMatrix.block(3, 3, 6, 6) = invMass2 * IdentityMat3d;
+    invMassMatrix.block(3, 3, 3, 3) = invMass2 * IdentityMat3d;
     
     double Constraint_x1_x2 = (currCOMPositions.row(0) - currCOMPositions.row(1)).norm() - refValue;
     // equality constraint
