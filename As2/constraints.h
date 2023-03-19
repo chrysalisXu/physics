@@ -77,8 +77,8 @@ public:
     }
     else {
         RowVectorXd correctedVelocity_Vector = velocity_Vector + delta_Velocity;
-        correctedCOMVelocities = correctedVelocity_Vector.segment(0,3) + correctedVelocity_Vector.segment(6,9);
-        correctedAngularVelocities = correctedVelocity_Vector.segment(3, 6) + correctedVelocity_Vector.segment(9, 12);
+        correctedCOMVelocities = correctedVelocity_Vector.segment(0,3) + correctedVelocity_Vector.segment(6,3);
+        correctedAngularVelocities = correctedVelocity_Vector.segment(3, 3) + correctedVelocity_Vector.segment(9, 3);
         return false;
     };
     
