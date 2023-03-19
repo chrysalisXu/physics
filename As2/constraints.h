@@ -47,11 +47,15 @@ public:
      Note to differentiate between different constraint types; for inequality constraints you don't do anything unless it's unsatisfied.
      ***************/
     Matrix3d IdentityMat3d = Matrix3d::Identity(); // 3*3 identity matrix
-    invMassMatrix = (invMass1 * IdentityMat3d, invInertiaTensor1, invMass2 * IdentityMat3d, invInertiaTensor2);
+    //invMassMatrix = (invMass1 * IdentityMat3d, invInertiaTensor1, invMass2 * IdentityMat3d, invInertiaTensor2);
+    invMassMatrix.block(0, 0, 3, 3) = invMass1 * IdentityMat3d;
+    invMassMatrix.block(3, 3, 6, 6) = invInertiaTensor1;
+    invMassMatrix.block(6, 6, 9, 9) = invMass2 * IdentityMat3d;
+    invMassMatrix.block(9, 9, 12, 12) = invInertiaTensor2;
     double Constraint_x1_x2 = (currCOMPositions.row(0) - currCOMPositions.row(1)).norm() - refValue;
     RowVectorXd velocity_Vector(12); // 1*12
     velocity_Vector = (currCOMVelocities.row(0), currAngularVelocities.row(0), currCOMVelocities.row(1), currAngularVelocities.row(1));
-    RowVector3d n_hat = currCOMPositions.row(0) - currCOMPositions.row(1);
+    RowVector3d n_hat = (currCOMPositions.row(0) - currCOMPositions.row(1))/(currCOMPositions.row(0) - currCOMPositions.row(1)).norm();
     RowVector3d rA = currCOMPositions.row(0) - currVertexPositions.row(0);
     RowVector3d rB = currCOMPositions.row(1) - currVertexPositions.row(1);
     constGradient = (n_hat, rA.cross(n_hat), -n_hat, rB.cross(n_hat)); // 1*12
@@ -78,12 +82,6 @@ public:
         return false;
     };
     
-
-     //Stub code: remove upon implementation
-     //correctedCOMVelocities=currCOMVelocities;
-     //correctedAngularVelocities=currAngularVelocities;
-     //return true;
-     //end of stub code
   }
   
   //projects the position unto the constraint
@@ -101,11 +99,35 @@ public:
      
      Note to differentiate between different constraint types; for inequality constraints you don't do anything unless it's unsatisfied.
      ***************/
+
+    //In Position correction, ignore angular velocity
+    // So J is also a 1*6 vector
+    Matrix3d IdentityMat3d = Matrix3d::Identity(); // 3*3 identity matrix
+    invMassMatrix.block(0, 0, 3, 3) = invMass1 * IdentityMat3d;
+    invMassMatrix.block(3, 3, 6, 6) = invMass2 * IdentityMat3d;
     
-    //Stub code: remove upon implementation
-    correctedCOMPositions=currCOMPositions;
-    return true;
-    //end of stub code
+    double Constraint_x1_x2 = (currCOMPositions.row(0) - currCOMPositions.row(1)).norm() - refValue;
+    // equality constraint
+    if (abs(Constraint_x1_x2) <= tolerance) { 
+        correctedCOMPositions = currCOMPositions;
+        return true;
+    }
+    else {
+        // correct COM positions
+        // according to topic 6, slide 9
+        RowVector3d n_hat = (currCOMPositions.row(0) - currCOMPositions.row(1)) / (currCOMPositions.row(0) - currCOMPositions.row(1)).norm();
+        RowVector3d r1 = currCOMPositions.row(0);
+        RowVector3d r2 = currCOMPositions.row(1);
+        RowVector3d delta_r1 = - invMass2/(invMass1 + invMass2) * ((r1 - r2).norm() - refValue)* n_hat;
+        RowVector3d delta_r2 = invMass1 / (invMass1 + invMass2) * ((r1 - r2).norm() - refValue) * n_hat;
+        correctedCOMPositions.row(0) = r1 + delta_r1;
+        correctedCOMPositions.row(1) = r2 + delta_r2;
+
+        return false;
+    }
+    
+    
+
   }
 };
 
