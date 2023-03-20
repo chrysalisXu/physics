@@ -465,11 +465,13 @@ public:
    You do not need to update this function in Practical 2
    *********************************************************************/
   void updateScene( const double timeStep, const double CRCoeff, const double tolerance, 
-                    const int maxIterations,float dragForceCoeff, float fricTion, 
+                    const int maxIterations,float dragForceCoeff, float fricTion, float constraintFlexibleRatio,
                     RowVector3d& OverallAddonComSpeed, RowVector3d& OverallAddonAngSpeed)
 {
     DragForceCoeff = dragForceCoeff;
     friction = fricTion;
+    for (int i=0; i<constraints.size(); i++)
+      constraints[i].ConstraintFlexibleRatio = constraintFlexibleRatio;
     //integrating velocity, position and orientation from forces and previous states
     for (int i=0;i<meshes.size();i++)
       meshes[i].integrate(timeStep, DragForceCoeff, OverallAddonComSpeed, OverallAddonAngSpeed);

@@ -20,8 +20,11 @@ public:
   ConstraintType constraintType;  //The type of the constraint, and will affect the value and the gradient. This SHOULD NOT change after initialization!
   ConstraintEqualityType constraintEqualityType;  //whether the constraint is an equality or an inequality
   
+  double ConstraintFlexibleRatio;
+
   Constraint(const ConstraintType _constraintType, const ConstraintEqualityType _constraintEqualityType, const int& _m1, const int& _v1, const int& _m2, const int& _v2, const double& _invMass1, const double& _invMass2, const RowVector3d& _refVector, const double& _refValue, const double& _CRCoeff):constraintType(_constraintType), constraintEqualityType(_constraintEqualityType), m1(_m1), v1(_v1), m2(_m2), v2(_v2), invMass1(_invMass1), invMass2(_invMass2),  refValue(_refValue), CRCoeff(_CRCoeff){
     refVector=_refVector;
+    ConstraintFlexibleRatio = 1;
   }
   
   ~Constraint(){}
@@ -37,6 +40,13 @@ public:
     MatrixXd invMassMatrix=MatrixXd::Zero(12,12);
     RowVectorXd constGradient(12); // constraint Gradient is Jacobian 1*12
     
+    if (constraintType==DISTANCE){
+        if (JudgePositionConstraint(currVertexPositions, tolerance)<-0.5){
+          correctedCOMVelocities=currCOMVelocities;
+          correctedAngularVelocities=currAngularVelocities;
+          return true;
+        }
+    }
     
     /**************
      TODO: write velocity correction procedure:
@@ -52,10 +62,10 @@ public:
     invMassMatrix.block(3, 3, 3, 3) = invInertiaTensor1;
     invMassMatrix.block(6, 6, 3, 3) = invMass2 * IdentityMat3d;
     invMassMatrix.block(9, 9, 3, 3) = invInertiaTensor2;
-    double Constraint_x1_x2 = (currCOMPositions.row(0) - currCOMPositions.row(1)).norm() - refValue;
+    // double Constraint_x1_x2 = (currVertexPositions.row(0) - currVertexPositions.row(1)).norm() - refValue;
     RowVectorXd velocity_Vector(12); // 1*12
     velocity_Vector = (currCOMVelocities.row(0), currAngularVelocities.row(0), currCOMVelocities.row(1), currAngularVelocities.row(1));
-    RowVector3d n_hat = (currCOMPositions.row(0) - currCOMPositions.row(1))/(currCOMPositions.row(0) - currCOMPositions.row(1)).norm();
+    RowVector3d n_hat = (currVertexPositions.row(0) - currVertexPositions.row(1))/(currVertexPositions.row(0) - currVertexPositions.row(1)).norm();
     RowVector3d rA = currCOMPositions.row(0) - currVertexPositions.row(0);
     RowVector3d rB = currCOMPositions.row(1) - currVertexPositions.row(1);
     constGradient = (n_hat, rA.cross(n_hat), -n_hat, rB.cross(n_hat)); // 1*12
@@ -84,6 +94,19 @@ public:
     
   }
   
+  // in distance constraint, judge whether constraint needs working
+  // return -1 if constraint is satisfied
+  // return wanted distance if not
+  double JudgePositionConstraint(const MatrixXd& currConstPositions, double tolerance){
+    double distance = (currConstPositions.row(0) - currConstPositions.row(1)).norm();
+    if (abs(distance - refValue) <= tolerance + ConstraintFlexibleRatio * refValue)
+      return -1;
+    if (distance > refValue)
+      return refValue + ConstraintFlexibleRatio * refValue;
+    distance = refValue - ConstraintFlexibleRatio * refValue;
+    return (distance<0)? 0 : distance;
+  }
+
   //projects the position unto the constraint
   //returns true if constraint was already valid with "currPositions"
   bool resolvePositionConstraint(const MatrixXd& currCOMPositions, const MatrixXd& currConstPositions, MatrixXd& correctedCOMPositions, double tolerance){
@@ -100,31 +123,32 @@ public:
      Note to differentiate between different constraint types; for inequality constraints you don't do anything unless it's unsatisfied.
      ***************/
 
+    double desiredRefValue = refValue;
+    if (constraintType==DISTANCE){
+      desiredRefValue = JudgePositionConstraint(currConstPositions, tolerance);
+      if (desiredRefValue < 0.5){
+        correctedCOMPositions = currCOMPositions;
+        return true;
+      }
+    }
+
     //In Position correction, ignore angular velocity
     // So J is also a 1*6 vector
     Matrix3d IdentityMat3d = Matrix3d::Identity(); // 3*3 identity matrix
     invMassMatrix.block(0, 0, 3, 3) = invMass1 * IdentityMat3d;
     invMassMatrix.block(3, 3, 3, 3) = invMass2 * IdentityMat3d;
     
-    double Constraint_x1_x2 = (currCOMPositions.row(0) - currCOMPositions.row(1)).norm() - refValue;
-    // equality constraint
-    if (abs(Constraint_x1_x2) <= tolerance) { 
-        correctedCOMPositions = currCOMPositions;
-        return true;
-    }
-    else {
-        // correct COM positions
-        // according to topic 6, slide 9
-        RowVector3d n_hat = (currCOMPositions.row(0) - currCOMPositions.row(1)) / (currCOMPositions.row(0) - currCOMPositions.row(1)).norm();
-        RowVector3d r1 = currCOMPositions.row(0);
-        RowVector3d r2 = currCOMPositions.row(1);
-        RowVector3d delta_r1 = - invMass2/(invMass1 + invMass2) * ((r1 - r2).norm() - refValue)* n_hat;
-        RowVector3d delta_r2 = invMass1 / (invMass1 + invMass2) * ((r1 - r2).norm() - refValue) * n_hat;
-        correctedCOMPositions.row(0) = r1 + delta_r1;
-        correctedCOMPositions.row(1) = r2 + delta_r2;
+    // correct COM positions
+    // according to topic 6, slide 9
+    RowVector3d n_hat = (currConstPositions.row(0) - currConstPositions.row(1)) / (currConstPositions.row(0) - currConstPositions.row(1)).norm();
+    RowVector3d r1 = currConstPositions.row(0);
+    RowVector3d r2 = currConstPositions.row(1);
+    RowVector3d delta_r1 = - invMass2/(invMass1 + invMass2) * ((r1 - r2).norm() - desiredRefValue)* n_hat;
+    RowVector3d delta_r2 = invMass1 / (invMass1 + invMass2) * ((r1 - r2).norm() - desiredRefValue) * n_hat;
+    correctedCOMPositions.row(0) = currCOMPositions.row(0)+ delta_r1;
+    correctedCOMPositions.row(1) = currCOMPositions.row(1)+ delta_r2;
 
-        return false;
-    }
+    return false;
     
     
 
