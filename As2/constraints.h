@@ -22,7 +22,13 @@ public:
   
   double ConstraintFlexibleRatio;
 
-  Constraint(const ConstraintType _constraintType, const ConstraintEqualityType _constraintEqualityType, const int& _m1, const int& _v1, const int& _m2, const int& _v2, const double& _invMass1, const double& _invMass2, const RowVector3d& _refVector, const double& _refValue, const double& _CRCoeff):constraintType(_constraintType), constraintEqualityType(_constraintEqualityType), m1(_m1), v1(_v1), m2(_m2), v2(_v2), invMass1(_invMass1), invMass2(_invMass2),  refValue(_refValue), CRCoeff(_CRCoeff){
+  Constraint(
+    const ConstraintType _constraintType,
+    const ConstraintEqualityType _constraintEqualityType,
+    const int& _m1, const int& _v1,
+    const int& _m2, const int& _v2,
+    const double& _invMass1, const double& _invMass2,
+    const RowVector3d& _refVector, const double& _refValue, const double& _CRCoeff):constraintType(_constraintType), constraintEqualityType(_constraintEqualityType), m1(_m1), v1(_v1), m2(_m2), v2(_v2), invMass1(_invMass1), invMass2(_invMass2),  refValue(_refValue), CRCoeff(_CRCoeff){
     refVector=_refVector;
     ConstraintFlexibleRatio = 1;
   }
@@ -35,63 +41,92 @@ public:
   //The velocities are a vector (vCOM1, w1, vCOM2, w2) in both input and output.
   //returns true if constraint was already valid with "currVelocities", and false otherwise (false means there was a correction done)
   //currCOMPositions is a 2x3 matrix, where each row is per one of the sides of the constraints; the rest of the relevant variables are similar, and so should the outputs be resized.
-  bool resolveVelocityConstraint(const MatrixXd& currCOMPositions, const MatrixXd& currVertexPositions, const MatrixXd& currCOMVelocities, const MatrixXd& currAngularVelocities, const Matrix3d& invInertiaTensor1, const Matrix3d& invInertiaTensor2, MatrixXd& correctedCOMVelocities, MatrixXd& correctedAngularVelocities, double tolerance){
-    
+  bool resolveVelocityConstraint(
+    const MatrixXd& currCOMPositions,
+    const MatrixXd& currVertexPositions,
+    const MatrixXd& currCOMVelocities,
+    const MatrixXd& currAngularVelocities,
+    const Matrix3d& invInertiaTensor1,
+    const Matrix3d& invInertiaTensor2,
+    MatrixXd& correctedCOMVelocities,
+    MatrixXd& correctedAngularVelocities,
+    double tolerance
+  ){
     MatrixXd invMassMatrix=MatrixXd::Zero(12,12);
     RowVectorXd constGradient(12); // constraint Gradient is Jacobian 1*12
-    
-    if (constraintType==DISTANCE){
-        if (JudgePositionConstraint(currVertexPositions, tolerance)<-0.5){
-          correctedCOMVelocities=currCOMVelocities;
-          correctedAngularVelocities=currAngularVelocities;
-          return true;
-        }
-    }
-    
-    /**************
-     TODO: write velocity correction procedure:
-     1. If the velocity Constraint is satisfied up to tolerate ("abs(Jv)<=tolerance"), set corrected values to original ones and return true
-     
-     2. Otherwise, correct linear and angular velocities as learnt in class.
-     
-     Note to differentiate between different constraint types; for inequality constraints you don't do anything unless it's unsatisfied.
-     ***************/
     Matrix3d IdentityMat3d = Matrix3d::Identity(); // 3*3 identity matrix
     //invMassMatrix = (invMass1 * IdentityMat3d, invInertiaTensor1, invMass2 * IdentityMat3d, invInertiaTensor2);
     invMassMatrix.block(0, 0, 3, 3) = invMass1 * IdentityMat3d;
     invMassMatrix.block(3, 3, 3, 3) = invInertiaTensor1;
     invMassMatrix.block(6, 6, 3, 3) = invMass2 * IdentityMat3d;
     invMassMatrix.block(9, 9, 3, 3) = invInertiaTensor2;
-    // double Constraint_x1_x2 = (currVertexPositions.row(0) - currVertexPositions.row(1)).norm() - refValue;
     RowVectorXd velocity_Vector(12); // 1*12
-    velocity_Vector = (currCOMVelocities.row(0), currAngularVelocities.row(0), currCOMVelocities.row(1), currAngularVelocities.row(1));
-    RowVector3d n_hat = (currVertexPositions.row(0) - currVertexPositions.row(1))/(currVertexPositions.row(0) - currVertexPositions.row(1)).norm();
-    RowVector3d rA = currCOMPositions.row(0) - currVertexPositions.row(0);
-    RowVector3d rB = currCOMPositions.row(1) - currVertexPositions.row(1);
-    constGradient = (n_hat, rA.cross(n_hat), -n_hat, rB.cross(n_hat)); // 1*12
-    // define lamda: Lagrange multiplier, lamda_up: numerator, lamda_down: denominator
-    double lamda_up = constGradient.transpose().dot(velocity_Vector); // 1*12 .dot 1*12
-    double lamda_down = constGradient * invMassMatrix * constGradient.transpose(); // 1*12 * 12*12 * 12*1
-    double lamda = -lamda_up / lamda_down;
-    RowVectorXd delta_Velocity(12);
-    delta_Velocity = -lamda * invMassMatrix * constGradient.transpose(); //12*12 * 12*1
-
-    // RowVector3d impulse = constGradient.transpose() * lamda;
-
-    // need to determine Δv such that Ji · (v + Δv) = 0
-    //if (constGradient.dot(velocity_Vector + delta_Velocity) == 0) {
-    if (abs(constGradient.dot(velocity_Vector)) <= tolerance) {
+    velocity_Vector << currCOMVelocities.row(0), currAngularVelocities.row(0), currCOMVelocities.row(1), currAngularVelocities.row(1);
+    
+    if (constraintType==DISTANCE){
+      if (JudgePositionConstraint(currVertexPositions, tolerance)<-0.5){
         correctedCOMVelocities=currCOMVelocities;
         correctedAngularVelocities=currAngularVelocities;
         return true;
+      }
+      
+      RowVector3d n_hat = (currVertexPositions.row(0) - currVertexPositions.row(1))/(currVertexPositions.row(0) - currVertexPositions.row(1)).norm();
+      RowVector3d rA = currVertexPositions.row(0) - currCOMPositions.row(0);
+      RowVector3d rB = currVertexPositions.row(1) - currCOMPositions.row(1);
+      constGradient << n_hat, rA.cross(n_hat), -n_hat, -rB.cross(n_hat); // 1*12
+      // define lamda: Lagrange multiplier, lamda_up: numerator, lamda_down: denominator
+      double lamda_up = constGradient.transpose().dot(velocity_Vector); // 1*12 .dot 1*12
+      double lamda_down = constGradient * invMassMatrix * constGradient.transpose(); // 1*12 * 12*12 * 12*1
+      double lamda = -lamda_up / lamda_down;
+      RowVectorXd delta_Velocity(12);
+      delta_Velocity = lamda * invMassMatrix * constGradient.transpose(); //12*12 * 12*1
+
+      // RowVector3d impulse = constGradient.transpose() * lamda;
+      // need to determine Δv such that Ji · (v + Δv) = 0
+      if (abs(constGradient.dot(velocity_Vector)) <= tolerance) {
+          correctedCOMVelocities=currCOMVelocities;
+          correctedAngularVelocities=currAngularVelocities;
+          return true;
+      }
+      else {
+          RowVectorXd correctedVelocity_Vector = velocity_Vector + delta_Velocity;
+          correctedCOMVelocities.row(0) = correctedVelocity_Vector.segment(0,3);
+          correctedCOMVelocities.row(1) = correctedVelocity_Vector.segment(6,3);
+          correctedAngularVelocities.row(0) = correctedVelocity_Vector.segment(3, 3);
+          correctedAngularVelocities.row(1) = correctedVelocity_Vector.segment(9, 3);
+          return false;
+      };
     }
-    else {
-        RowVectorXd correctedVelocity_Vector = velocity_Vector + delta_Velocity;
-        correctedCOMVelocities = correctedVelocity_Vector.segment(0,3) + correctedVelocity_Vector.segment(6,3);
-        correctedAngularVelocities = correctedVelocity_Vector.segment(3, 3) + correctedVelocity_Vector.segment(9, 3);
-        return false;
-    };
-    
+    if (constraintType==COLLISION){
+      RowVector3d n_hat = refVector;
+      RowVector3d rA = currVertexPositions.row(0) - currCOMPositions.row(0);
+      RowVector3d rB = currVertexPositions.row(1) - currCOMPositions.row(1);
+      constGradient << n_hat, rA.cross(n_hat), -n_hat, -rB.cross(n_hat); // 1*12
+      // define lamda: Lagrange multiplier, lamda_up: numerator, lamda_down: denominator
+      double lamda_up = constGradient.transpose().dot(velocity_Vector); // 1*12 .dot 1*12
+      double lamda_down = constGradient * invMassMatrix * constGradient.transpose(); // 1*12 * 12*12 * 12*1
+      double lamda = - lamda_up / lamda_down;
+      RowVectorXd delta_Velocity(12);
+      delta_Velocity = (1 + CRCoeff) * lamda * invMassMatrix * constGradient.transpose(); //12*12 * 12*1
+
+      cout << "normal" << refVector <<endl;
+      cout << "jacobian" << constGradient<<endl;
+      cout << "velocity" << velocity_Vector<<endl;
+      cout << "delta_velocity" << delta_Velocity<<endl;
+      if (abs(constGradient.dot(velocity_Vector)) <= tolerance) {
+          correctedCOMVelocities=currCOMVelocities;
+          correctedAngularVelocities=currAngularVelocities;
+          return true;
+      }
+      else {
+          RowVectorXd correctedVelocity_Vector = velocity_Vector + delta_Velocity;
+          correctedCOMVelocities.row(0) = correctedVelocity_Vector.segment(0,3);
+          correctedCOMVelocities.row(1) = correctedVelocity_Vector.segment(6,3);
+          correctedAngularVelocities.row(0) = correctedVelocity_Vector.segment(3, 3);
+          correctedAngularVelocities.row(1) = correctedVelocity_Vector.segment(9, 3);
+          return false;
+      };
+    }
   }
   
   // in distance constraint, judge whether constraint needs working
@@ -124,12 +159,10 @@ public:
      ***************/
 
     double desiredRefValue = refValue;
-    if (constraintType==DISTANCE){
-      desiredRefValue = JudgePositionConstraint(currConstPositions, tolerance);
-      if (desiredRefValue < 0.5){
-        correctedCOMPositions = currCOMPositions;
-        return true;
-      }
+    desiredRefValue = JudgePositionConstraint(currConstPositions, tolerance);
+    if (desiredRefValue < 0.5){
+      correctedCOMPositions = currCOMPositions;
+      return true;
     }
 
     //In Position correction, ignore angular velocity
@@ -149,9 +182,6 @@ public:
     correctedCOMPositions.row(1) = currCOMPositions.row(1)+ delta_r2;
 
     return false;
-    
-    
-
   }
 };
 

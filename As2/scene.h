@@ -415,67 +415,39 @@ public:
      TODO: practical 2
      update m(1,2) comVelocity, angVelocity and COM variables by using a Constraint class of type COLLISION
      ***********************/
-    RowVector3d contactPosition;
-    contactPosition = penPosition + depth * contactNormal;
-    // contactNormal should be already normalized
-    m1.COM = m1.COM - m2.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal; // inverse mass weighting 
-    m2.COM = m2.COM + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
-    for (int i = 0; i < m1.currV.rows(); i++)
-        m1.currV.row(i) << QRot(m1.origV.row(i), m1.orientation) + m1.COM;
-    for (int i = 0; i < m2.currV.rows(); i++)
-        m2.currV.row(i) << QRot(m2.origV.row(i), m2.orientation) + m2.COM;
-    contactPosition = penPosition + m1.totalMass / (m1.totalMass + m2.totalMass) * depth * contactNormal;
-        
-    // Collision velocity resolution as constraint resolution
-    
-    // inequality constraints: collision & penetration
-    // refValue: d12 = 0
-    double d1_2 = 0;
-    // equality constraints: rigid rods
-    // refValue: d12 = length of rod
-    // double refValue = ;
-    RowVector3d r1_r2 = m1.COM - m2.COM;
-    // Declare a Constraint class variable: constraint
+
     Constraint collisionConstraint = Constraint(
-        ConstraintType::COLLISION, ConstraintEqualityType::INEQUALITY, 0, 1, 0, 1, invMass1, invMass2, contactNormal, 0, CRCoeff);
-
-    RowVector3d rotationArm_m1 = contactPosition - m1.COM;
-    RowVector3d rotationArm_m2 = contactPosition - m2.COM;
-
-    RowVector3d closingVelocity_m1 = m1.comVelocity + m1.angVelocity.cross(rotationArm_m1);
-    RowVector3d closingVelocity_m2 = m2.comVelocity + m2.angVelocity.cross(rotationArm_m2);
+        COLLISION, INEQUALITY, 0, 1, 0, 1, invMass1, invMass2, contactNormal, 0, CRCoeff);
 
     Matrix3d invInertiaTensor_m1 = m1.getCurrInvInertiaTensor();
     Matrix3d invInertiaTensor_m2 = m2.getCurrInvInertiaTensor();
 
     MatrixXd COMPositions(2, 3); COMPositions << m1.COM, m2.COM;
-    MatrixXd ConstPositions(2, 3); ConstPositions << contactPosition, contactPosition; // IS THIS CORRECT?
-
+    MatrixXd ConstPositions(2, 3); ConstPositions << penPosition + depth * contactNormal, penPosition;
     MatrixXd COMVelocities(2, 3); COMVelocities << m1.comVelocity, m2.comVelocity;
     MatrixXd AngVelocities(2, 3); AngVelocities << m1.angVelocity, m2.angVelocity;
 
     MatrixXd correctedCOMVelocities(2, 3), correctedAngVelocities(2, 3), correctedCOMPositions(2, 3);
 
-    bool velocityWasValid = collisionConstraint.resolveVelocityConstraint(COMPositions, ConstPositions, COMVelocities, AngVelocities,
-        invInertiaTensor_m1, invInertiaTensor_m2, correctedCOMVelocities, correctedAngVelocities, tolerance);
+    bool velocityWasValid = collisionConstraint.resolveVelocityConstraint(
+      COMPositions, ConstPositions, COMVelocities, AngVelocities,
+      invInertiaTensor_m1, invInertiaTensor_m2,
+      correctedCOMVelocities, correctedAngVelocities, tolerance
+    );
     bool positionWasValid = collisionConstraint.resolvePositionConstraint(COMPositions, ConstPositions, correctedCOMPositions, tolerance);
 
-
-    if (velocityWasValid == FALSE) {
-
+    cout << "v befroe" << COMVelocities<<endl;
+    cout << "v after" <<correctedCOMVelocities<<endl;
+    if (velocityWasValid == false) {
         m1.comVelocity = correctedCOMVelocities.row(0);
         m2.comVelocity = correctedCOMVelocities.row(1);
-
         m1.angVelocity = correctedAngVelocities.row(0);
         m2.angVelocity = correctedAngVelocities.row(1);
-
     }
-
-    if (positionWasValid == FALSE) {
+    if (positionWasValid == false) {
         m1.COM = correctedCOMPositions.row(0);
         m2.COM = correctedCOMPositions.row(1);
     }
-
   }
   
   /*********************************************************************
