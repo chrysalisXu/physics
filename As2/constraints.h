@@ -62,7 +62,9 @@ public:
     invMassMatrix.block(9, 9, 3, 3) = invInertiaTensor2;
     RowVectorXd velocity_Vector(12); // 1*12
     velocity_Vector << currCOMVelocities.row(0), currAngularVelocities.row(0), currCOMVelocities.row(1), currAngularVelocities.row(1);
-    
+    RowVector3d rA = currVertexPositions.row(0) - currCOMPositions.row(0);
+    RowVector3d rB = currVertexPositions.row(1) - currCOMPositions.row(1);
+
     if (constraintType==DISTANCE){
       if (JudgePositionConstraint(currVertexPositions, tolerance)<-0.5){
         correctedCOMVelocities=currCOMVelocities;
@@ -71,8 +73,6 @@ public:
       }
       
       RowVector3d n_hat = (currVertexPositions.row(0) - currVertexPositions.row(1))/(currVertexPositions.row(0) - currVertexPositions.row(1)).norm();
-      RowVector3d rA = currVertexPositions.row(0) - currCOMPositions.row(0);
-      RowVector3d rB = currVertexPositions.row(1) - currCOMPositions.row(1);
       constGradient << n_hat, rA.cross(n_hat), -n_hat, -rB.cross(n_hat); // 1*12
       // define lamda: Lagrange multiplier, lamda_up: numerator, lamda_down: denominator
       double lamda_up = constGradient.transpose().dot(velocity_Vector); // 1*12 .dot 1*12
@@ -99,8 +99,6 @@ public:
     }
     if (constraintType==COLLISION){
       RowVector3d n_hat = refVector;
-      RowVector3d rA = currVertexPositions.row(0) - currCOMPositions.row(0);
-      RowVector3d rB = currVertexPositions.row(1) - currCOMPositions.row(1);
       constGradient << n_hat, rA.cross(n_hat), -n_hat, -rB.cross(n_hat); // 1*12
       // define lamda: Lagrange multiplier, lamda_up: numerator, lamda_down: denominator
       double lamda_up = constGradient.transpose().dot(velocity_Vector); // 1*12 .dot 1*12
@@ -109,11 +107,12 @@ public:
       RowVectorXd delta_Velocity(12);
       delta_Velocity = (1 + CRCoeff) * lamda * invMassMatrix * constGradient.transpose(); //12*12 * 12*1
 
-      cout << "normal" << refVector <<endl;
-      cout << "jacobian" << constGradient<<endl;
+      //cout << "normal" << refVector <<endl;
+      //cout << "ver " << currVertexPositions <<endl;
+      //cout << "jacobian" << constGradient<<endl;
       cout << "velocity" << velocity_Vector<<endl;
       cout << "delta_velocity" << delta_Velocity<<endl;
-      if (abs(constGradient.dot(velocity_Vector)) <= tolerance) {
+      if (constGradient.dot(velocity_Vector) <= tolerance) {
           correctedCOMVelocities=currCOMVelocities;
           correctedAngularVelocities=currAngularVelocities;
           return true;
@@ -160,7 +159,7 @@ public:
 
     double desiredRefValue = refValue;
     desiredRefValue = JudgePositionConstraint(currConstPositions, tolerance);
-    if (desiredRefValue < 0.5){
+    if (desiredRefValue < -0.5){
       correctedCOMPositions = currCOMPositions;
       return true;
     }
@@ -176,8 +175,8 @@ public:
     RowVector3d n_hat = (currConstPositions.row(0) - currConstPositions.row(1)) / (currConstPositions.row(0) - currConstPositions.row(1)).norm();
     RowVector3d r1 = currConstPositions.row(0);
     RowVector3d r2 = currConstPositions.row(1);
-    RowVector3d delta_r1 = - invMass2/(invMass1 + invMass2) * ((r1 - r2).norm() - desiredRefValue)* n_hat;
-    RowVector3d delta_r2 = invMass1 / (invMass1 + invMass2) * ((r1 - r2).norm() - desiredRefValue) * n_hat;
+    RowVector3d delta_r1 = - invMass1/(invMass1 + invMass2) * ((r1 - r2).norm() - desiredRefValue)* n_hat;
+    RowVector3d delta_r2 = invMass2 / (invMass1 + invMass2) * ((r1 - r2).norm() - desiredRefValue) * n_hat;
     correctedCOMPositions.row(0) = currCOMPositions.row(0)+ delta_r1;
     correctedCOMPositions.row(1) = currCOMPositions.row(1)+ delta_r2;
 

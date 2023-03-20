@@ -404,6 +404,7 @@ public:
    *********************************************************************/
   void handleCollision(Mesh& m1, Mesh& m2,const double& depth, const RowVector3d& contactNormal,const RowVector3d& penPosition, const double CRCoeff, const double tolerance){
     
+    cout <<endl<< "col begin"<<endl;
     
     //std::cout<<"contactNormal: "<<contactNormal<<std::endl;
     //std::cout<<"penPosition: "<<penPosition<<std::endl;
@@ -436,8 +437,8 @@ public:
     );
     bool positionWasValid = collisionConstraint.resolvePositionConstraint(COMPositions, ConstPositions, correctedCOMPositions, tolerance);
 
-    cout << "v befroe" << COMVelocities<<endl;
-    cout << "v after" <<correctedCOMVelocities<<endl;
+    cout << "pos before" <<COMPositions<<endl;
+    cout << "pos after" <<correctedCOMPositions<<endl;
     if (velocityWasValid == false) {
         m1.comVelocity = correctedCOMVelocities.row(0);
         m2.comVelocity = correctedCOMVelocities.row(1);
