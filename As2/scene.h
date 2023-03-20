@@ -436,23 +436,45 @@ public:
     // double refValue = ;
     RowVector3d r1_r2 = m1.COM - m2.COM;
     // Declare a Constraint class variable: constraint
+    Constraint collisionConstraint = Constraint(
+        ConstraintType::COLLISION, ConstraintEqualityType::INEQUALITY, 0, 1, 0, 1, invMass1, invMass2, contactNormal, 0, CRCoeff);
 
-    int currConstIndex = 0;
-    Constraint collisionConstraint = constraints[currConstIndex];
-    
-    RowVector3d currConstPos1 = contactPosition - m1.COM;
-    RowVector3d currConstPos2 = contactPosition - m2.COM;
-    MatrixXd currCOMPositions(2, 3); currCOMPositions << meshes[collisionConstraint.m1].COM, meshes[collisionConstraint.m2].COM;
-    MatrixXd currConstPositions(2, 3); currConstPositions << currConstPos1, currConstPos2; // currVertexPositions
-    MatrixXd currCOMVelocities(2, 3); currCOMVelocities << meshes[collisionConstraint.m1].comVelocity, meshes[collisionConstraint.m2].comVelocity;
-    MatrixXd currAngVelocities(2, 3); currAngVelocities << meshes[collisionConstraint.m1].angVelocity, meshes[collisionConstraint.m2].angVelocity;
-    MatrixXd correctedCOMVelocities, correctedAngVelocities, correctedCOMPositions;
-    Matrix3d invInertiaTensor1 = meshes[collisionConstraint.m1].getCurrInvInertiaTensor();
-    Matrix3d invInertiaTensor2 = meshes[collisionConstraint.m2].getCurrInvInertiaTensor();
-    bool velocityWasValid = collisionConstraint.resolveVelocityConstraint(currCOMPositions, currConstPositions, currCOMVelocities, currAngVelocities, invInertiaTensor1, invInertiaTensor2, correctedCOMVelocities, correctedAngVelocities, tolerance);
-    bool positionWasValid = collisionConstraint.resolvePositionConstraint(currCOMPositions, currConstPositions, correctedCOMPositions, tolerance);
+    RowVector3d rotationArm_m1 = contactPosition - m1.COM;
+    RowVector3d rotationArm_m2 = contactPosition - m2.COM;
+
+    RowVector3d closingVelocity_m1 = m1.comVelocity + m1.angVelocity.cross(rotationArm_m1);
+    RowVector3d closingVelocity_m2 = m2.comVelocity + m2.angVelocity.cross(rotationArm_m2);
+
+    Matrix3d invInertiaTensor_m1 = m1.getCurrInvInertiaTensor();
+    Matrix3d invInertiaTensor_m2 = m2.getCurrInvInertiaTensor();
+
+    MatrixXd COMPositions(2, 3); COMPositions << m1.COM, m2.COM;
+    MatrixXd ConstPositions(2, 3); ConstPositions << contactPosition, contactPosition; // IS THIS CORRECT?
+
+    MatrixXd COMVelocities(2, 3); COMVelocities << m1.comVelocity, m2.comVelocity;
+    MatrixXd AngVelocities(2, 3); AngVelocities << m1.angVelocity, m2.angVelocity;
+
+    MatrixXd correctedCOMVelocities(2, 3), correctedAngVelocities(2, 3), correctedCOMPositions(2, 3);
+
+    bool velocityWasValid = collisionConstraint.resolveVelocityConstraint(COMPositions, ConstPositions, COMVelocities, AngVelocities,
+        invInertiaTensor_m1, invInertiaTensor_m2, correctedCOMVelocities, correctedAngVelocities, tolerance);
+    bool positionWasValid = collisionConstraint.resolvePositionConstraint(COMPositions, ConstPositions, correctedCOMPositions, tolerance);
 
 
+    if (velocityWasValid == FALSE) {
+
+        m1.comVelocity = correctedCOMVelocities.row(0);
+        m2.comVelocity = correctedCOMVelocities.row(1);
+
+        m1.angVelocity = correctedAngVelocities.row(0);
+        m2.angVelocity = correctedAngVelocities.row(1);
+
+    }
+
+    if (positionWasValid == FALSE) {
+        m1.COM = correctedCOMPositions.row(0);
+        m2.COM = correctedCOMPositions.row(1);
+    }
 
   }
   
