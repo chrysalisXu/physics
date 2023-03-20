@@ -448,6 +448,11 @@ public:
     if (positionWasValid == false) {
         m1.COM = correctedCOMPositions.row(0);
         m2.COM = correctedCOMPositions.row(1);
+        //updating currV according to corrected COM
+        for (int i = 0; i < m1.currV.rows(); i++)
+            m1.currV.row(i) << QRot(m1.origV.row(i), m1.orientation) + m1.COM;
+        for (int i = 0; i < m2.currV.rows(); i++)
+            m2.currV.row(i) << QRot(m2.origV.row(i), m2.orientation) + m2.COM;
     }
   }
   
