@@ -163,6 +163,7 @@ public:
     Eigen::RowVector4d qAngV;
     qAngV << 0, 0.5 * timeStep * angVelocity;
     orientation += QMult(qAngV, orientation);
+    orientation.normalize();
     
     for (int i=0;i<currV.rows();i++)
       currV.row(i)<<QRot(origV.row(i), orientation)+COM;
