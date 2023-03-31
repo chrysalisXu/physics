@@ -257,20 +257,105 @@ public:
   
   void createGlobalMatrices(const double timeStep, const double _alpha, const double _beta)
   {
+
    
-    /*********
-    TODO: create the M, D, K matrices from alpha, beta, poisson ratio, and Young's modulus as learnt in class.
-    Afterward create the matrix "A" with the given timeStep that is the left hand side of the entire system.
-     *********/
+      /*********
+      TODO: create the M, D, K matrices from alpha, beta, poisson ratio, and Young's modulus as learnt in class.
+      Afterward create the matrix "A" with the given timeStep that is the left hand side of the entire system.
+      *********/
+      /*
+      * reference: lecture notes: https://www.overleaf.com/read/bhbvdhhtcckt
+      */
+
+      // Create (0 I3*3), 3 * 4 matrix
+      Matrix3d Identity = Matrix3d::Identity();
+      MatrixXd mat0_I3 =  MatrixXd::Zero(3, 4);
+      mat0_I3.block(0, 1, 3, 3) = Identity;
+      cout << " Pe matrix " << mat0_I3 << endl; // 
+
+      //Gradient Matrix of tetrahedron e: Ge = (0 I3×3) * Pe.inverse()
+      MatrixXd Ge(3, 4);
+
+      // Jacobian Matrix of tetrahedron e: Je = (Ge, Ge, Ge), 9 * 12 matrix
+      MatrixXd Je = MatrixXd::Zero(9, 12);
+      Je.block(0, 0, 3, 4) = Ge;
+      Je.block(3, 4, 3, 4) = Ge;
+      Je.block(6, 8, 3, 4) = Ge;
+
+
+      /* create Matrix D, note this is not damping matrix D!!
+      D is purely made out of combinationand addition valuesand therefore does not depend on
+      anything in the geometry of e. */
+      MatrixXd matD = MatrixXd::Zero(6, 9);
+      matD(0, 0) = 1;      matD(1, 4) = 1;       matD(2, 8) = 1;
+      matD(3, 1) = 0.5;      matD(5, 2) = 0.5;      matD(3, 3) = 0.5;
+      matD(4, 5) = 0.5;      matD(5, 6) = 0.5;      matD(4, 7) = 0.5;
+      // strain tensor e = D * Je * ue = Be * ue, 6*1  = 6*9 * 9*12 * 12*1
+
+
+
+
+
+
+
+
+
+      // formula: μ = Y / (2 * (1 + ν)), λ = ν * Y / ((1 + ν) * ( 1 - 2 * ν)), where Y is youngModulus, ν is poissonRatio
+      double nu = youngModulus / (2 * (1 + poissonRatio));
+      double lambda = poissonRatio * youngModulus / ((1 + poissonRatio) * (1 - 2 * poissonRatio));
     
-    A=M+D*timeStep+K*(timeStep*timeStep);
+
     
-    //Should currently fail since A is empty
-    if (ASolver==NULL)
-      ASolver=new SimplicialLLT<SparseMatrix<double>>();
-    ASolver->analyzePattern(A);
-    ASolver->factorize(A);
+      /* vert2tet: the permutation matrix Q (as it is called in the lecture notes)
+      * and, tet2vert is Q transposed.
+      */
+      SparseMatrix<double> vert2tet(12 * T.rows(), origPositions.size());
+      SparseMatrix<double> tet2vert(origPositions.size(), 12 * T.rows());
+
+      vector<Triplet<double>> v2tTriplets, t2vTriplets;
+      for (int i = 0; i < T.rows(); i++) {
+          for (int j = 0; j < 4; j++) {
+              for (int k = 0; k < 3; k++) {
+                  v2tTriplets.push_back(Triplet<double>(12 * i + 4 * k + j, 3 * T(i, j) + k, 1.0));
+                  t2vTriplets.push_back(Triplet<double>(3 * T(i, j) + k, 12 * i + 4 * k + j, 1.0));
+              }
+          }
+      }
+
+      vert2tet.setFromTriplets(v2tTriplets.begin(), v2tTriplets.end());
+      tet2vert.setFromTriplets(t2vTriplets.begin(), t2vTriplets.end());
+      /*End of calculation of Matrix Q*/
+
+
+      /* what is Q used for? TO GET K.
+      * K = Q.transpose() * K′ * Q, where K is the matrix we need to create in createGlobalMatrices(), Q is calcultated below,
+      * K′ is simply a 12 |T | × 12 |T | huge matrix made of 12 × 12 block matrices of each Ke on its main diagonal.
+      */
+      MatrixXd K_dot; // TODO
+      K = tet2vert * K_dot * vert2tet;
+
+
+      /*
+      * Mass matrix M: 3 |V | × 3 |V |, where V is vertices in a mesh
+      * mass element is m = ρdV, ρ: density of the vertex, dV: local volume of a vertex
+      */
+      SparseMatrix<double> massMat(12 * V.rows(), 12 * V.rows());
+      // TODO
+      massMat.setFromTriplets(tripletVector.begin(), tripletVector.end());
+     
+      density* voronoiVolumes;
+      /* 
+      * Damping matrix D:  D = αM + βK
+      */
+      D = alpha * M + beta * K;
+
+      A=M+D*timeStep+K*(timeStep*timeStep);
     
+      //Should currently fail since A is empty
+      if (ASolver==NULL)
+          ASolver=new SimplicialLLT<SparseMatrix<double>>();
+      ASolver->analyzePattern(A);
+      ASolver->factorize(A);
   }
   
   //returns center of mass
