@@ -25,7 +25,13 @@ void center(const void *_obj, ccd_vec3_t *dir);
 //the class the contains each individual rigid objects and their functionality
 class Mesh{
 public:
+   /// Created by Nisha
+  // Random constants
+  int num_vertices;
+  int num_tets;
+  // End //
   
+
   //position
   VectorXd origPositions;     //3|V|x1 original vertex positions in xyzxyz format - never change this!
   VectorXd currPositions;     //3|V|x1 current vertex positions in xyzxyz format
@@ -267,44 +273,155 @@ public:
       * reference: lecture notes: https://www.overleaf.com/read/bhbvdhhtcckt
       */
 
-      // Create (0 I3*3), 3 * 4 matrix
-      Matrix3d Identity = Matrix3d::Identity();
-      MatrixXd mat0_I3 =  MatrixXd::Zero(3, 4);
-      mat0_I3.block(0, 1, 3, 3) = Identity;
-      cout << " Pe matrix " << mat0_I3 << endl; // 
+      /**************************** Start of M ***************************
+      * Mass matrix M: 3 |V | × 3 |V |, where |V | is number of vertices in a mesh
+      * mass element is m = ρdV, ρ: density of the vertex, dV: local volume of a vertex
+      */
 
-      //Gradient Matrix of tetrahedron e: Ge = (0 I3×3) * Pe.inverse()
-      MatrixXd Ge(3, 4);
+      // NOTE: when define C and D_mat, use SparseMatrix class
+      
+      // Create the M matrix from invMasses
+      num_vertices = invMasses.rows();
+      num_tets = T.rows();
+      cout << "Number of tets: "<< num_tets << endl;
+      cout << "Number of vertices: " << num_vertices<< endl;
 
-      // Jacobian Matrix of tetrahedron e: Je = (Ge, Ge, Ge), 9 * 12 matrix
-      MatrixXd Je = MatrixXd::Zero(9, 12);
-      Je.block(0, 0, 3, 4) = Ge;
-      Je.block(3, 4, 3, 4) = Ge;
-      Je.block(6, 8, 3, 4) = Ge;
+      assert(num_vertices == origPositions.rows() / 3);
 
-
-      /* create Matrix D, note this is not damping matrix D!!
-      D is purely made out of combinationand addition valuesand therefore does not depend on
-      anything in the geometry of e. */
-      MatrixXd matD = MatrixXd::Zero(6, 9);
-      matD(0, 0) = 1;      matD(1, 4) = 1;       matD(2, 8) = 1;
-      matD(3, 1) = 0.5;      matD(5, 2) = 0.5;      matD(3, 3) = 0.5;
-      matD(4, 5) = 0.5;      matD(5, 6) = 0.5;      matD(4, 7) = 0.5;
-      // strain tensor e = D * Je * ue = Be * ue, 6*1  = 6*9 * 9*12 * 12*1
-
-
-
-
+      M = SparseMatrix<double>(num_vertices * 3, num_vertices * 3); // set the size of SparseMatrix M.
+      M.reserve(num_vertices * 3); // pre-allocate memory for the matrix.
+      M.setZero(); // clean values, keep memory
+      for (int v_index = 0; v_index < num_vertices; v_index++) // v_index: vertex index
+      {
+          double value = voronoiVolumes[v_index] * density; // mass of a vertex
+          M.insert(3 * v_index + 0, 3 * v_index + 0) = value; // repeat inserting the same mass value to M 3 times
+          M.insert(3 * v_index + 1, 3 * v_index + 1) = value;
+          M.insert(3 * v_index + 2, 3 * v_index + 2) = value;
+      }
+      //*************************End of Mass Matrix************************
 
 
 
-
+      /**************************** Start of K **************************
+      * Stiffness Matrix K: 3 |V | × 3 |V |,  where |V | is number of vertices in a mesh
+      * K is global
+      */
+      K = SparseMatrix<double>(num_vertices * 3, num_vertices * 3); //set the size of K. 
 
       // formula: μ = Y / (2 * (1 + ν)), λ = ν * Y / ((1 + ν) * ( 1 - 2 * ν)), where Y is youngModulus, ν is poissonRatio
-      double nu = youngModulus / (2 * (1 + poissonRatio));
+      double mu = youngModulus / (2 * (1 + poissonRatio));
       double lambda = poissonRatio * youngModulus / ((1 + poissonRatio) * (1 - 2 * poissonRatio));
-    
 
+      // Create stiffness tensor Ce 
+      SparseMatrix<double> C(6, 6);
+      C.insert(0, 0) = lambda + 2 * mu;
+      C.insert(1, 1) = lambda + 2 * mu;
+      C.insert(2, 2) = lambda + 2 * mu;
+      C.insert(0, 1) = lambda;
+      C.insert(0, 2) = lambda;
+      C.insert(1, 0) = lambda;
+      C.insert(1, 2) = lambda;
+      C.insert(2, 0) = lambda;
+      C.insert(2, 1) = lambda;
+      C.insert(3, 3) = mu;
+      C.insert(4, 4) = mu;
+      C.insert(5, 5) = mu;
+      
+      //*******end of Ce*********
+
+      // Create (0 I3*3), 3 * 4 matrix
+      Matrix<double, 3, 4> mat0_I3;
+      mat0_I3 << 0, 1, 0, 0,
+          0, 0, 1, 0,
+          0, 0, 0, 1;
+      /*Matrix3d Identity = Matrix3d::Identity();
+      MatrixXd mat0_I3 = MatrixXd::Zero(3, 4);
+      mat0_I3.block(0, 1, 3, 3) = Identity;*/
+      cout << " (0 I3×3) matrix " << mat0_I3 << endl;
+
+      /* create Matrix D, note this is not damping matrix D!!
+      D is purely made out of combinationand addition valuesand therefore does not depend on anything in the geometry of e. */
+      // Note: must use SparseMatrix here, better not multiply dense matrix with sparse matrix
+      SparseMatrix<double> D_mat(6, 9);
+      D_mat.insert(0, 0) = 1;
+      D_mat.insert(1, 4) = 1;
+      D_mat.insert(2, 8) = 1;
+      D_mat.insert(3, 1) = 0.5;
+      D_mat.insert(3, 3) = 0.5;
+      D_mat.insert(4, 5) = 0.5;
+      D_mat.insert(4, 7) = 0.5;
+      D_mat.insert(5, 2) = 0.5;
+      D_mat.insert(5, 6) = 0.5;
+
+      // strain tensor ε = D * Je * ue = Be * ue, 6*1  = 6*9 * 9*12 * 12*1
+      // ue: all u_xyz,1234 values (12 in total).
+      
+
+      // Calculate Ke 
+      // Note: a dense matrix * sparse matrix => dense matrix
+      // make a std::vector of multiple triplets
+      std::vector<SparseMatrix<double>> Ke;  
+      Ke.reserve(num_tets);
+      for (int tet_index = 0; tet_index < num_tets; tet_index++) // tet_index: tetrahedron index
+      {
+          /* Calculate Pe of a tet
+          Pe =(1 x1 y1 z1
+               1 x2 y2 z2
+               1 x3 y3 z3
+               1 x4 y4 z4)
+          */
+          //Matrix4d Pe;
+          Matrix<double, 4, 4> Pe;
+          for (int j = 0; j < 4; j++)
+          {
+              int v_index = T(tet_index, j);
+              Pe(j, 0) = 1.0;
+              Pe(j, 1) = origPositions[3 * v_index + 0];
+              Pe(j, 2) = origPositions[3 * v_index + 1];
+              Pe(j, 3) = origPositions[3 * v_index + 2];
+          }
+
+          // Calculate Ge: Gradient Matrix of tetrahedron e,  Ge = (0 I3×3) * Pe.inverse()
+          MatrixXd Ge(3, 4);
+          Ge = mat0_I3 * Pe.inverse();
+          // Matrix<double, 3, 4> Ge = mat0_I3 * Pe.inverse();
+
+          // Calculate Je: Jacobian Matrix of tetrahedron e
+          SparseMatrix<double> Je(9, 12);
+          for (int x = 0; x < 4; x++) // Ge columns = 4
+          {
+              for (int y = 0; y < 3; y++) // Ge rows = 3
+              {
+                  double value = Ge(y, x);
+                  for (int i = 0; i < 3; i++)
+                      Je.insert(i * 3 + y, i * 4 + x) = value;
+              }
+          }
+          
+          // Calculate Be = D*Je
+          SparseMatrix<double> Be(6, 12);
+          Be = D_mat * Je;
+          
+           
+          // Calculate Ke
+          SparseMatrix<double> Ke_i(12, 12);
+          // refer to formula in lecture notes P44, below (41)
+          Ke_i = tetVolumes[tet_index] * (Be.transpose() * C) * Be; // sanity check: 12*6 * 6*6 * 6*12 = 12*12
+          Ke.push_back(Ke_i);
+      }
+
+      // Put all Ke's together into one large SparseMatrix K_prime (K')
+      // K′ is simply a 12 | T | × 12 | T | huge matrix made of 12 × 12 block matrices of each Ke on its main diagonal
+      SparseMatrix<double> K_prime(12 * num_tets, 12 * num_tets);
+      for (int tet_index = 0; tet_index < num_tets; tet_index++)
+      {
+          for (int x = 0; x < 12; x++)
+              for (int y = 0; y < 12; y++)
+              {
+                  double value = Ke[tet_index].coeffRef(y, x); // coeffRef(i, j) returns value in (i, j) position
+                  K_prime.insert(12 * tet_index + y, 12 * tet_index + x) = value;
+              }
+      }
     
       /* vert2tet: the permutation matrix Q (as it is called in the lecture notes)
       * and, tet2vert is Q transposed.
@@ -326,24 +443,15 @@ public:
       tet2vert.setFromTriplets(t2vTriplets.begin(), t2vTriplets.end());
       /*End of calculation of Matrix Q*/
 
-
       /* what is Q used for? TO GET K.
-      * K = Q.transpose() * K′ * Q, where K is the matrix we need to create in createGlobalMatrices(), Q is calcultated below,
-      * K′ is simply a 12 |T | × 12 |T | huge matrix made of 12 × 12 block matrices of each Ke on its main diagonal.
+      * K = Q.transpose() * K′ * Q, where K is the matrix we need to create in createGlobalMatrices()
+      * Q is calcultated above
       */
-      MatrixXd K_dot; // TODO
-      K = tet2vert * K_dot * vert2tet;
 
+      K = tet2vert * K_prime * vert2tet;
+      //*************************End of K Matrix************************
 
-      /*
-      * Mass matrix M: 3 |V | × 3 |V |, where V is vertices in a mesh
-      * mass element is m = ρdV, ρ: density of the vertex, dV: local volume of a vertex
-      */
-      SparseMatrix<double> massMat(12 * V.rows(), 12 * V.rows());
-      // TODO
-      massMat.setFromTriplets(tripletVector.begin(), tripletVector.end());
-     
-      density* voronoiVolumes;
+      
       /* 
       * Damping matrix D:  D = αM + βK
       */
@@ -393,9 +501,25 @@ public:
       return;
     
     /****************TODO: construct rhs (right-hand side) and use ASolver->solve(rhs) to solve for velocities********/
-    
-    VectorXd rhs = VectorXd::Zero(currVelocities.size());  //REMOVE THIS! it's a stub
+
+    VectorXd f_ext(3 * num_vertices);
+    for (int v_index = 0; v_index < num_vertices; v_index++)
+    {
+        // Only in y direction, we have gravity acceleration= - 9.8 m/s^2
+        f_ext(v_index * 3 + 0) = 0;
+        f_ext(v_index * 3 + 1) = -9.8;
+        f_ext(v_index * 3 + 2) = 0;
+    }
+    /*
+    * topic 9, slide 29
+    * formula: [M + D*Δt + K*(Δt^2)] * velocity(t + Δt) = M*v(t) - [K * (x(t) - x0) - f_ext] * Δt, where [M + D*Δt + K*(Δt^2)] is a constant
+    * for a given right-hand side b = M*v(t) - [K * (x(t) - x0) - f_ext] * Δt
+    */
+    // VectorXd rhs = VectorXd::Zero(currVelocities.size());  //REMOVE THIS! it's a stub
+    VectorXd rhs = M * currVelocities - (K * (currPositions - origPositions) - M * f_ext) * timeStep; // add Mg = gravity here
     currVelocities=ASolver->solve(rhs);
+
+  
   }
   
   //Update the current position with the integrated velocity
@@ -459,6 +583,8 @@ public:
       boundTets(i)=boundTList[i];
     
     ASolver=NULL;
+
+
   }
   
 };
