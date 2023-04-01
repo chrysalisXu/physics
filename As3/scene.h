@@ -332,8 +332,8 @@ public:
       // Create (0 I3*3), 3 * 4 matrix
       Matrix<double, 3, 4> mat0_I3;
       mat0_I3 << 0, 1, 0, 0,
-          0, 0, 1, 0,
-          0, 0, 0, 1;
+                 0, 0, 1, 0,
+                 0, 0, 0, 1;
       /*Matrix3d Identity = Matrix3d::Identity();
       MatrixXd mat0_I3 = MatrixXd::Zero(3, 4);
       mat0_I3.block(0, 1, 3, 3) = Identity;*/
@@ -370,8 +370,7 @@ public:
                1 x3 y3 z3
                1 x4 y4 z4)
           */
-          //Matrix4d Pe;
-          Matrix<double, 4, 4> Pe;
+          Matrix4d Pe;
           for (int j = 0; j < 4; j++)
           {
               int v_index = T(tet_index, j);
@@ -384,7 +383,6 @@ public:
           // Calculate Ge: Gradient Matrix of tetrahedron e,  Ge = (0 I3×3) * Pe.inverse()
           MatrixXd Ge(3, 4);
           Ge = mat0_I3 * Pe.inverse();
-          // Matrix<double, 3, 4> Ge = mat0_I3 * Pe.inverse();
 
           // Calculate Je: Jacobian Matrix of tetrahedron e
           SparseMatrix<double> Je(9, 12);
@@ -394,7 +392,7 @@ public:
               {
                   double value = Ge(y, x);
                   for (int i = 0; i < 3; i++)
-                      Je.insert(i * 3 + y, i * 4 + x) = value;
+                      Je.insert(3 * i + y, 4 * i + x) = value;
               }
           }
           
@@ -513,9 +511,7 @@ public:
     /*
     * topic 9, slide 29
     * formula: [M + D*Δt + K*(Δt^2)] * velocity(t + Δt) = M*v(t) - [K * (x(t) - x0) - f_ext] * Δt, where [M + D*Δt + K*(Δt^2)] is a constant
-    * for a given right-hand side b = M*v(t) - [K * (x(t) - x0) - f_ext] * Δt
     */
-    // VectorXd rhs = VectorXd::Zero(currVelocities.size());  //REMOVE THIS! it's a stub
     VectorXd rhs = M * currVelocities - (K * (currPositions - origPositions) - M * f_ext) * timeStep; // add Mg = gravity here
     currVelocities=ASolver->solve(rhs);
 
