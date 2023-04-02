@@ -459,8 +459,8 @@ public:
       /* 
       * Damping matrix D:  D = αM + βK
       */
-      D = alpha * M + beta * K;
-
+      // D = alpha * M + beta * K;
+      D = _alpha * M + _beta * K;
       A=M+D*timeStep+K*(timeStep*timeStep);
     
       //Should currently fail since A is empty
