@@ -291,13 +291,18 @@ public:
       M = SparseMatrix<double>(num_vertices * 3, num_vertices * 3); // set the size of SparseMatrix M.
       M.reserve(num_vertices * 3); // pre-allocate memory for the matrix.
       M.setZero(); // clean values, keep memory
+      std::vector<Triplet<double>> MTriplets;
       for (int v_index = 0; v_index < num_vertices; v_index++) // v_index: vertex index
       {
           double value = voronoiVolumes[v_index] * density; // mass of a vertex
-          M.insert(3 * v_index + 0, 3 * v_index + 0) = value; // repeat inserting the same mass value to M 3 times
-          M.insert(3 * v_index + 1, 3 * v_index + 1) = value;
-          M.insert(3 * v_index + 2, 3 * v_index + 2) = value;
+          //M.insert(3 * v_index + 0, 3 * v_index + 0) = value; // repeat inserting the same mass value to M 3 times
+          //M.insert(3 * v_index + 1, 3 * v_index + 1) = value;
+          //M.insert(3 * v_index + 2, 3 * v_index + 2) = value;
+          MTriplets.push_back(Triplet<double>(3 * v_index + 0, 3 * v_index + 0, value));
+          MTriplets.push_back(Triplet<double>(3 * v_index + 1, 3 * v_index + 1, value));
+          MTriplets.push_back(Triplet<double>(3 * v_index + 2, 3 * v_index + 2, value));
       }
+      M.setFromTriplets(MTriplets.begin(), MTriplets.end());
       //*************************End of Mass Matrix************************
 
 
@@ -400,7 +405,6 @@ public:
           SparseMatrix<double> Be(6, 12);
           Be = D_mat * Je;
           
-           
           // Calculate Ke
           SparseMatrix<double> Ke_i(12, 12);
           // refer to formula in lecture notes P44, below (41)
@@ -411,16 +415,18 @@ public:
       // Put all Ke's together into one large SparseMatrix K_prime (K')
       // K′ is simply a 12 | T | × 12 | T | huge matrix made of 12 × 12 block matrices of each Ke on its main diagonal
       SparseMatrix<double> K_prime(12 * num_tets, 12 * num_tets);
+      std::vector<Triplet<double>> K_primeTriplets;
       for (int tet_index = 0; tet_index < num_tets; tet_index++)
       {
           for (int x = 0; x < 12; x++)
               for (int y = 0; y < 12; y++)
               {
-                  double value = Ke[tet_index].coeffRef(y, x); // coeffRef(i, j) returns value in (i, j) position
-                  K_prime.insert(12 * tet_index + y, 12 * tet_index + x) = value;
+                  // coeffRef(i, j) returns value in (i, j) position
+                  // K_prime.insert(12 * tet_index + y, 12 * tet_index + x) = Ke[tet_index].coeffRef(y, x);
+                  K_primeTriplets.push_back(Triplet<double>(12 * tet_index + y, 12 * tet_index + x, Ke[tet_index].coeffRef(y, x)));
               }
       }
-    
+      K_prime.setFromTriplets(K_primeTriplets.begin(), K_primeTriplets.end());
       /* vert2tet: the permutation matrix Q (as it is called in the lecture notes)
       * and, tet2vert is Q transposed.
       */
