@@ -17,6 +17,7 @@ bool animationHack;  //fixing the weird camera bug in libigl
 //initial values
 float timeStep = 0.02;
 float CRCoeff= 1.0;
+double squeezeRatio = 1;
 
 
 double tolerance = 10e-3;
@@ -129,7 +130,7 @@ bool key_down(igl::opengl::glfw::Viewer &viewer, unsigned char key, int modifier
   if (key == 'S')
   {
     if (!viewer.core().is_animating){
-      scene.updateScene(timeStep, CRCoeff, tolerance, maxIterations);
+      scene.updateScene(timeStep, CRCoeff, tolerance, maxIterations, squeezeRatio);
       currTime+=timeStep;
       updateMeshes(viewer);
       std::cout <<"currTime: "<<currTime<<std::endl;
@@ -149,7 +150,7 @@ bool pre_draw(igl::opengl::glfw::Viewer &viewer)
   
   if (viewer.core().is_animating){
     if (!animationHack)
-      scene.updateScene(timeStep, CRCoeff, tolerance, maxIterations);
+      scene.updateScene(timeStep, CRCoeff, tolerance, maxIterations, squeezeRatio);
     else
       viewer.core().is_animating=false;
     animationHack=false;
@@ -174,6 +175,7 @@ class CustomMenu : public igl::opengl::glfw::imgui::ImGuiMenu
     if (ImGui::CollapsingHeader("Algorithm Options", ImGuiTreeNodeFlags_DefaultOpen))
     {
       ImGui::InputFloat("CR Coeff",&CRCoeff,0,0,"%.2f");
+      ImGui::InputDouble("Squeeze Ratio", &squeezeRatio, 0, 0, "%.2f");
       
       if (ImGui::InputFloat("Time Step", &timeStep)) {
         mgpViewer.core().animation_max_fps = (((int)1.0/timeStep));
@@ -206,7 +208,7 @@ int main(int argc, char *argv[])
   scene.initScene(timeStep, 0.1, 0.1);
    //scene.setPlatformBarriers(platV, CRCoeff);
 
-  scene.updateScene(0.0, CRCoeff, tolerance, maxIterations);
+  scene.updateScene(0.0, CRCoeff, tolerance, maxIterations, squeezeRatio);
   
   // Viewer Settings
   for (int i=0;i<scene.meshes.size();i++){

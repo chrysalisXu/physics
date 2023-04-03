@@ -90,6 +90,24 @@ public:
   }
   
   
+  void squeeze(const double squeezeRatio){
+    if (isFixed)
+      return;
+    Vector3d COM; COM.setZero();
+    for (int i=0;i<T.rows();i++){
+      Vector3d e01=currPositions.segment(3*T(i,1),3)-currPositions.segment(3*T(i,0),3);
+      Vector3d e02=currPositions.segment(3*T(i,2),3)-currPositions.segment(3*T(i,0),3);
+      Vector3d e03=currPositions.segment(3*T(i,3),3)-currPositions.segment(3*T(i,0),3);
+      Vector3d tetCentroid=(currPositions.segment(3*T(i,0),3)+currPositions.segment(3*T(i,1),3)+currPositions.segment(3*T(i,2),3)+currPositions.segment(3*T(i,3),3))/4.0;
+      tetVolumes(i)=std::abs(e01.dot(e02.cross(e03)))/6.0;
+      COM+=tetVolumes(i)*tetCentroid;
+    }
+    COM.array()/=tetVolumes.sum();
+    for (int i=0;i<currPositions.size();i+=3){
+      currPositions.segment(i,3) = squeezeRatio * (currPositions.segment(i,3) - COM) + COM;
+    }
+  }
+
   //this function creates all collision constraints between vertices of the two meshes
   void createCollisionConstraints(const Mesh& m, const bool sameMesh, const double timeStep, const double CRCoeff, vector<Constraint>& activeConstraints){
     
@@ -664,7 +682,7 @@ public:
    You don't need to modify this function to get the basic practical working
    *********************************************************************/
   
-  void updateScene(double timeStep, double CRCoeff, const double tolerance, const int maxIterations){
+  void updateScene(double timeStep, double CRCoeff, const double tolerance, const int maxIterations, double& squeezeRatio){
     
     /*******************1. Integrating velocity and position from external and internal forces************************************/
     for (int i=0;i<meshes.size();i++)
@@ -737,7 +755,13 @@ public:
     global2Mesh();
     
     //Extensions: you can add user constraints in here and resolve them sequentially.
-    
+    if (squeezeRatio!=1){
+      for (int i=0;i<meshes.size();i++){
+        meshes[i].squeeze(squeezeRatio);
+      }
+      mesh2global();
+      squeezeRatio = 1;
+    }
   }
   
   //adding an object.
