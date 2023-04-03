@@ -288,21 +288,24 @@ public:
 
       assert(num_vertices == origPositions.rows() / 3);
 
-      M = SparseMatrix<double>(num_vertices * 3, num_vertices * 3); // set the size of SparseMatrix M.
-      M.reserve(num_vertices * 3); // pre-allocate memory for the matrix.
-      M.setZero(); // clean values, keep memory
-      std::vector<Triplet<double>> MTriplets;
-      for (int v_index = 0; v_index < num_vertices; v_index++) // v_index: vertex index
+      //M = SparseMatrix<double>(num_vertices * 3, num_vertices * 3); // set the size of SparseMatrix M.
+      //M.reserve(num_vertices * 3); // pre-allocate memory for the matrix.
+      //M.setZero(); // clean values, keep memory
+      M = SparseMatrix<double>(origPositions.size(), origPositions.size());
+      vector<Triplet<double>> MTriplets;
+      for (int v_index = 0; v_index < invMasses.size(); v_index++) // v_index: vertex index
       {
-          double value = voronoiVolumes[v_index] * density; // mass of a vertex
+          //double value = voronoiVolumes[v_index] * density; // mass of a vertex
           //M.insert(3 * v_index + 0, 3 * v_index + 0) = value; // repeat inserting the same mass value to M 3 times
           //M.insert(3 * v_index + 1, 3 * v_index + 1) = value;
           //M.insert(3 * v_index + 2, 3 * v_index + 2) = value;
-          MTriplets.push_back(Triplet<double>(3 * v_index + 0, 3 * v_index + 0, value));
-          MTriplets.push_back(Triplet<double>(3 * v_index + 1, 3 * v_index + 1, value));
-          MTriplets.push_back(Triplet<double>(3 * v_index + 2, 3 * v_index + 2, value));
+          //double m_value = 1 / invMasses(v_index);
+          MTriplets.push_back(Triplet<double>(3 * v_index + 0, 3 * v_index + 0, 1 / invMasses(v_index)));
+          MTriplets.push_back(Triplet<double>(3 * v_index + 1, 3 * v_index + 1, 1 / invMasses(v_index)));
+          MTriplets.push_back(Triplet<double>(3 * v_index + 2, 3 * v_index + 2, 1 / invMasses(v_index)));
       }
       M.setFromTriplets(MTriplets.begin(), MTriplets.end());
+      saveMatrix("M.txt", M);
       //*************************End of Mass Matrix************************
 
 
@@ -463,6 +466,17 @@ public:
       D = _alpha * M + _beta * K;
       A=M+D*timeStep+K*(timeStep*timeStep);
     
+  
+
+      saveMatrix("K.txt", K);
+      saveMatrix("A.txt", A);
+      
+      saveMatrix("D.txt", D);
+
+
+
+
+
       //Should currently fail since A is empty
       if (ASolver==NULL)
           ASolver=new SimplicialLLT<SparseMatrix<double>>();
@@ -470,6 +484,12 @@ public:
       ASolver->factorize(A);
   }
   
+  static void saveMatrix(const char* name, MatrixXd matrix) {
+      std::ofstream file(name);
+      file << matrix;
+      file.close();
+  }
+
   //returns center of mass
   Vector3d initializeVolumesAndMasses()
   {
